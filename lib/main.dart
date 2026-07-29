@@ -16,25 +16,23 @@ void main() {
 }
 
 /// ---------------------------------------------------------------------------
-/// Design tokens — matched to iOS 17/18 dark mode system colors, not generic
-/// Material defaults. This is what makes it feel "native" rather than themed.
+/// Design tokens — dark, frosted-glass UI with a single vivid green accent
+/// for primary actions and key numbers, matching the reference flight-app
+/// screenshot (dark cards, green pill buttons, green highlighted figures).
 /// ---------------------------------------------------------------------------
 class AppColors {
-  static const bg = Color(0xFF000000);
+  static const bg = Color(0xFF0A0A0B);
   static const secondaryBg = Color(0xFF1C1C1E);
-  static const tertiaryBg = Color(0xFF2C2C2E);
+  static const tertiaryBg = Color(0xFF2A2A2C);
   static const separator = Color(0x1FFFFFFF); // white 12%
   static const labelPrimary = Colors.white;
   static const labelSecondary = Color(0x99FFFFFF); // white 60%
   static const labelTertiary = Color(0x59FFFFFF); // white 35%
 
-  // Dark-mode system accent colors (these differ from light-mode iOS colors)
-  static const blue = Color(0xFF0A84FF);
-  static const green = Color(0xFF30D158);
-  static const red = Color(0xFFFF453A);
-  static const indigo = Color(0xFF5E5CE6);
-  static const purple = Color(0xFFBF5AF2);
-  static const orange = Color(0xFFFF9F0A);
+  // The single accent color — a vivid lime/spring green, used sparingly for
+  // primary buttons, focus states, and key figures (prices, totals).
+  static const green = Color(0xFFB6FF3D);
+  static const greenDeep = Color(0xFF7CD936);
 }
 
 class ExpenseSplitterApp extends StatelessWidget {
@@ -49,7 +47,7 @@ class ExpenseSplitterApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: '.SF Pro Text',
         colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.blue,
+          seedColor: AppColors.green,
           brightness: Brightness.dark,
         ),
         scaffoldBackgroundColor: AppColors.bg,
@@ -114,6 +112,7 @@ class PrimaryButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onPressed;
   final Color color;
+  final Color foreground;
   final bool expand;
 
   const PrimaryButton({
@@ -121,7 +120,8 @@ class PrimaryButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onPressed,
-    this.color = AppColors.blue,
+    this.color = AppColors.green,
+    this.foreground = Colors.black,
     this.expand = true,
   }) : super(key: key);
 
@@ -144,12 +144,18 @@ class PrimaryButton extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [color.withOpacity(0.55), color.withOpacity(0.24)],
+                colors: [
+                  color.withOpacity(0.92),
+                  color.withOpacity(0.78),
+                ],
               ),
-              border: Border.all(color: color.withOpacity(0.55), width: 1.2),
+              border: Border.all(
+                color: AppColors.labelPrimary.withOpacity(0.10),
+                width: 1.2,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.22),
+                  color: color.withOpacity(0.30),
                   blurRadius: 18,
                   offset: const Offset(0, 8),
                 ),
@@ -159,12 +165,12 @@ class PrimaryButton extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
               children: [
-                Icon(icon, color: Colors.white, size: 19),
+                Icon(icon, color: foreground, size: 19),
                 const SizedBox(width: 8),
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: foreground,
                     fontSize: 15.5,
                     fontWeight: FontWeight.w600,
                     letterSpacing: -0.2,
@@ -291,6 +297,7 @@ class GlassCard extends StatelessWidget {
           filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: Container(
             decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -309,7 +316,7 @@ class GlassCard extends StatelessWidget {
               child: InkWell(
                 onTap: onTap,
                 splashColor: Colors.transparent,
-                highlightColor: Colors.white.withOpacity(0.03),
+                highlightColor: AppColors.labelPrimary.withOpacity(0.03),
                 child: Padding(padding: padding, child: child),
               ),
             ),
@@ -320,9 +327,6 @@ class GlassCard extends StatelessWidget {
   }
 }
 
-/// A single glass card whose body is a list of rows separated by hairline
-/// dividers — this is the classic iOS "grouped list" look (Settings app),
-/// which reads as far more premium than a stack of separate floating cards.
 class GroupedGlassCard extends StatelessWidget {
   final List<Widget> rows;
 
@@ -349,17 +353,12 @@ class GroupedGlassCard extends StatelessWidget {
   }
 }
 
-/// ---------------------------------------------------------------------------
-/// BlurredSheet — wraps bottom-sheet content in the same frosted-glass
-/// material iOS uses for its own sheets/action sheets (like a UIBlurEffect),
-/// so pop-ups match the rest of the app instead of being flat solid panels.
-/// ---------------------------------------------------------------------------
 class BlurredSheet extends StatelessWidget {
   final Widget child;
   final double radius;
 
   const BlurredSheet({Key? key, required this.child, this.radius = 28})
-    : super(key: key);
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -369,6 +368,7 @@ class BlurredSheet extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
         child: Container(
           decoration: BoxDecoration(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
@@ -378,7 +378,10 @@ class BlurredSheet extends StatelessWidget {
               ],
             ),
             border: Border(
-              top: BorderSide(color: Colors.white.withOpacity(0.16), width: 1),
+              top: BorderSide(
+                color: Colors.white.withOpacity(0.16),
+                width: 1,
+              ),
             ),
           ),
           child: child,
@@ -388,15 +391,12 @@ class BlurredSheet extends StatelessWidget {
   }
 }
 
-/// ---------------------------------------------------------------------------
-/// SectionHeader — small caps section title like iOS Settings groups.
-/// ---------------------------------------------------------------------------
 class SectionHeader extends StatelessWidget {
   final String title;
   final String? trailing;
 
   const SectionHeader({Key? key, required this.title, this.trailing})
-    : super(key: key);
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -429,9 +429,6 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
-/// ---------------------------------------------------------------------------
-/// EmptyState — friendly, centered placeholder instead of a bare text line.
-/// ---------------------------------------------------------------------------
 class EmptyState extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -458,7 +455,7 @@ class EmptyState extends StatelessWidget {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.06),
+                color: AppColors.labelPrimary.withOpacity(0.05),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: AppColors.labelSecondary, size: 24),
@@ -490,22 +487,19 @@ class EmptyState extends StatelessWidget {
   }
 }
 
-/// ---------------------------------------------------------------------------
-/// Avatar — colored initials circle, deterministic color from name hash.
-/// ---------------------------------------------------------------------------
 class InitialsAvatar extends StatelessWidget {
   final String name;
   final double size;
 
   const InitialsAvatar({Key? key, required this.name, this.size = 40})
-    : super(key: key);
+      : super(key: key);
 
   static const _palette = [
-    AppColors.blue,
-    AppColors.indigo,
-    AppColors.purple,
-    AppColors.orange,
-    AppColors.green,
+    Color(0xFF1C1C1E),
+    Color(0xFF3A3A3C),
+    Color(0xFF48484A),
+    Color(0xFF636366),
+    Color(0xFF8E8E93),
   ];
 
   @override
@@ -513,12 +507,12 @@ class InitialsAvatar extends StatelessWidget {
     final initials = name.trim().isEmpty
         ? "?"
         : name
-              .trim()
-              .split(RegExp(r'\s+'))
-              .map((e) => e[0])
-              .take(2)
-              .join()
-              .toUpperCase();
+            .trim()
+            .split(RegExp(r'\s+'))
+            .map((e) => e[0])
+            .take(2)
+            .join()
+            .toUpperCase();
     final color = _palette[name.hashCode.abs() % _palette.length];
     return Container(
       width: size,
@@ -552,10 +546,10 @@ class ExpenseHomeScreen extends StatefulWidget {
 }
 
 class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
-  final List<FamilyUnit> _families = [];
+  final List<FamilyUnit> _units = [];
   final List<ExpenseEntry> _expenses = [];
 
-  final TextEditingController _familyNameController = TextEditingController();
+  final TextEditingController _unitNameController = TextEditingController();
   final TextEditingController _membersController = TextEditingController();
 
   final TextEditingController _expenseTitleController = TextEditingController();
@@ -563,14 +557,14 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       TextEditingController();
   String? _selectedPayerId;
 
-  void _addFamily() {
-    if (_familyNameController.text.isEmpty) return;
+  void _addUnit() {
+    if (_unitNameController.text.isEmpty) return;
     HapticFeedback.lightImpact();
     setState(() {
-      _families.add(
+      _units.add(
         FamilyUnit(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
-          name: _familyNameController.text.trim(),
+          name: _unitNameController.text.trim(),
           members: _membersController.text
               .split(',')
               .map((e) => e.trim())
@@ -578,7 +572,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
               .toList(),
         ),
       );
-      _familyNameController.clear();
+      _unitNameController.clear();
       _membersController.clear();
     });
     Navigator.pop(context);
@@ -587,8 +581,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
   void _addExpense() {
     if (_expenseTitleController.text.isEmpty ||
         _expenseAmountController.text.isEmpty ||
-        _selectedPayerId == null)
-      return;
+        _selectedPayerId == null) return;
 
     HapticFeedback.lightImpact();
     setState(() {
@@ -597,7 +590,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
           title: _expenseTitleController.text.trim(),
           paidByFamilyId: _selectedPayerId!,
           amount: double.tryParse(_expenseAmountController.text) ?? 0.0,
-          participatingFamilyIds: _families.map((f) => f.id).toList(),
+          participatingFamilyIds: _units.map((u) => u.id).toList(),
         ),
       );
       _expenseTitleController.clear();
@@ -609,20 +602,29 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
 
   List<SettlementTransfer> _calculateSettlements() {
     Map<String, double> netBalances = {};
-    for (var f in _families) {
-      netBalances[f.name] = 0.0;
+    for (var u in _units) {
+      netBalances[u.name] = 0.0;
+    }
+
+    // Calculate total individual members across all units to find per-head share
+    int totalMembersCount = 0;
+    for (var u in _units) {
+      // If no members are listed explicitly, fallback to counting the unit name as 1 member
+      int memberCount = u.members.isEmpty ? 1 : u.members.length;
+      totalMembersCount += memberCount;
     }
 
     for (var exp in _expenses) {
-      String payerName = _families
-          .firstWhere((f) => f.id == exp.paidByFamilyId)
-          .name;
+      String payerName =
+          _units.firstWhere((u) => u.id == exp.paidByFamilyId).name;
       netBalances[payerName] = (netBalances[payerName] ?? 0.0) + exp.amount;
 
-      if (_families.isNotEmpty) {
-        double splitAmount = exp.amount / _families.length;
-        for (var f in _families) {
-          netBalances[f.name] = (netBalances[f.name] ?? 0.0) - splitAmount;
+      if (totalMembersCount > 0) {
+        double perHeadAmount = exp.amount / totalMembersCount;
+        for (var u in _units) {
+          int memberCount = u.members.isEmpty ? 1 : u.members.length;
+          double unitShare = perHeadAmount * memberCount;
+          netBalances[u.name] = (netBalances[u.name] ?? 0.0) - unitShare;
         }
       }
     }
@@ -640,13 +642,11 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
     while (i < debtors.length && j < creditors.length) {
       var debtor = debtors[i];
       var creditor = creditors[j];
-      double amount = debtor.value < creditor.value
-          ? debtor.value
-          : creditor.value;
+      double amount =
+          debtor.value < creditor.value ? debtor.value : creditor.value;
 
-      transfers.add(
-        SettlementTransfer(from: debtor.key, to: creditor.key, amount: amount),
-      );
+      transfers.add(SettlementTransfer(
+          from: debtor.key, to: creditor.key, amount: amount));
 
       debtors[i] = MapEntry(debtor.key, debtor.value - amount);
       creditors[j] = MapEntry(creditor.key, creditor.value - amount);
@@ -669,36 +669,15 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       backgroundColor: AppColors.bg,
       body: Stack(
         children: [
-          // Ambient background wash — a full-bleed gradient instead of
-          // hard-edged circles, so the atmosphere feels like moody lighting
-          // rather than two visible blobs. Cool indigo top-left, a warm
-          // amber undertone bottom-right, both fading to pure black.
           Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: RadialGradient(
-                    center: const Alignment(-0.7, -1.0),
+                    center: const Alignment(-0.5, -1.0),
                     radius: 1.3,
                     colors: [
-                      AppColors.indigo.withOpacity(0.30),
-                      Colors.transparent,
-                    ],
-                    stops: const [0.0, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: const Alignment(0.9, 0.5),
-                    radius: 1.2,
-                    colors: [
-                      AppColors.orange.withOpacity(0.14),
+                      AppColors.green.withOpacity(0.10),
                       Colors.transparent,
                     ],
                     stops: const [0.0, 1.0],
@@ -715,13 +694,12 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [Colors.transparent, AppColors.bg],
-                    stops: const [0.3, 1.0],
+                    stops: const [0.25, 1.0],
                   ),
                 ),
               ),
             ),
           ),
-
           CustomScrollView(
             slivers: [
               SliverPersistentHeader(
@@ -737,21 +715,19 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Wallet-style hero summary card
                       _SummaryHeroCard(
                         totalPool: _totalPool,
-                        familyCount: _families.length,
+                        unitCount: _units.length,
                         transferCount: settlements.length,
                       ),
                       const SizedBox(height: 20),
-
                       Row(
                         children: [
                           Expanded(
                             child: PrimaryButton(
-                              label: "Add Family",
+                              label: "Add Unit",
                               icon: CupertinoIcons.person_add_solid,
-                              onPressed: () => _showAddFamilyDialog(context),
+                              onPressed: () => _showAddUnitDialog(context),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -759,37 +735,34 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                             child: PrimaryButton(
                               label: "Add Expense",
                               icon: CupertinoIcons.doc_text_fill,
-                              color: AppColors.indigo,
+                              color: AppColors.tertiaryBg,
+                              foreground: Colors.white,
                               onPressed: () => _showAddExpenseDialog(context),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 28),
-
                       SectionHeader(
-                        title: "Family Units",
-                        trailing: _families.isEmpty
-                            ? null
-                            : "${_families.length}",
+                        title: "Units",
+                        trailing: _units.isEmpty ? null : "${_units.length}",
                       ),
-                      _families.isEmpty
+                      _units.isEmpty
                           ? const EmptyState(
                               icon: CupertinoIcons.house_fill,
-                              title: "No family units yet",
+                              title: "No units yet",
                               subtitle:
-                                  "Tap “Add Family” to bring everyone into the split.",
+                                  "Tap “Add Unit” to bring everyone into the split.",
                             )
                           : GroupedGlassCard(
-                              rows: _families
+                              rows: _units
                                   .map(
-                                    (f) => Padding(
+                                    (u) => Padding(
                                       padding: const EdgeInsets.symmetric(
-                                        vertical: 10,
-                                      ),
+                                          vertical: 10),
                                       child: Row(
                                         children: [
-                                          InitialsAvatar(name: f.name),
+                                          InitialsAvatar(name: u.name),
                                           const SizedBox(width: 12),
                                           Expanded(
                                             child: Column(
@@ -797,7 +770,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                                   CrossAxisAlignment.start,
                                               children: [
                                                 Text(
-                                                  f.name,
+                                                  u.name,
                                                   style: const TextStyle(
                                                     fontSize: 15.5,
                                                     fontWeight: FontWeight.w600,
@@ -807,9 +780,9 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                                 ),
                                                 const SizedBox(height: 2),
                                                 Text(
-                                                  f.members.isEmpty
+                                                  u.members.isEmpty
                                                       ? "No members listed"
-                                                      : f.members.join(', '),
+                                                      : u.members.join(', '),
                                                   maxLines: 1,
                                                   overflow:
                                                       TextOverflow.ellipsis,
@@ -829,7 +802,6 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                   .toList(),
                             ),
                       const SizedBox(height: 28),
-
                       SectionHeader(
                         title: "Settlements",
                         trailing: settlements.isEmpty
@@ -849,8 +821,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                   .map(
                                     (s) => Padding(
                                       padding: const EdgeInsets.symmetric(
-                                        vertical: 10,
-                                      ),
+                                          vertical: 10),
                                       child: Row(
                                         children: [
                                           Container(
@@ -872,8 +843,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                             child: RichText(
                                               text: TextSpan(
                                                 style: const TextStyle(
-                                                  fontSize: 15,
-                                                ),
+                                                    fontSize: 15),
                                                 children: [
                                                   TextSpan(
                                                     text: s.from,
@@ -887,14 +857,14 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                                   const TextSpan(
                                                     text: "  owes  ",
                                                     style: TextStyle(
-                                                      color: AppColors
-                                                          .labelTertiary,
-                                                    ),
+                                                        color: AppColors
+                                                            .labelTertiary),
                                                   ),
                                                   TextSpan(
                                                     text: s.to,
                                                     style: const TextStyle(
-                                                      color: AppColors.blue,
+                                                      color: AppColors
+                                                          .labelPrimary,
                                                       fontWeight:
                                                           FontWeight.w600,
                                                     ),
@@ -918,13 +888,13 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                   )
                                   .toList(),
                             ),
-
                       if (settlements.isNotEmpty) ...[
                         const SizedBox(height: 28),
                         PrimaryButton(
                           label: "Export Settlement Report",
                           icon: CupertinoIcons.square_arrow_up_fill,
                           color: AppColors.tertiaryBg,
+                          foreground: AppColors.labelPrimary,
                           onPressed: () =>
                               _showExportBottomSheet(context, settlements),
                         ),
@@ -940,10 +910,6 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------
-  // Bottom sheets
-  // ---------------------------------------------------------------------
-
   Widget _sheetGrabber() {
     return Center(
       child: Container(
@@ -951,7 +917,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
         width: 36,
         height: 5,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.25),
+          color: AppColors.labelPrimary.withOpacity(0.16),
           borderRadius: BorderRadius.circular(3),
         ),
       ),
@@ -961,12 +927,10 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
   InputDecoration _fieldDecoration(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(
-        color: AppColors.labelTertiary,
-        fontSize: 14.5,
-      ),
+      labelStyle:
+          const TextStyle(color: AppColors.labelTertiary, fontSize: 14.5),
       filled: true,
-      fillColor: Colors.white.withOpacity(0.06),
+      fillColor: AppColors.labelPrimary.withOpacity(0.04),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -974,12 +938,12 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: AppColors.blue, width: 1.4),
+        borderSide: const BorderSide(color: AppColors.green, width: 1.4),
       ),
     );
   }
 
-  void _showAddFamilyDialog(BuildContext context) {
+  void _showAddUnitDialog(BuildContext context) {
     HapticFeedback.selectionClick();
     showModalBottomSheet(
       context: context,
@@ -999,7 +963,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
             children: [
               _sheetGrabber(),
               const Text(
-                "Add Family Unit",
+                "Add Unit",
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
@@ -1009,22 +973,21 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
               ),
               const SizedBox(height: 18),
               TextField(
-                controller: _familyNameController,
-                style: const TextStyle(color: Colors.white),
-                decoration: _fieldDecoration("Family Name"),
+                controller: _unitNameController,
+                style: const TextStyle(color: AppColors.labelPrimary),
+                decoration: _fieldDecoration("Unit Name (e.g. Rony)"),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _membersController,
-                style: const TextStyle(color: Colors.white),
+                style: const TextStyle(color: AppColors.labelPrimary),
                 decoration: _fieldDecoration("Members (comma separated)"),
               ),
               const SizedBox(height: 22),
               PrimaryButton(
-                label: "Save Family",
-                icon: CupertinoIcons.check_mark,
-                onPressed: _addFamily,
-              ),
+                  label: "Save Unit",
+                  icon: CupertinoIcons.check_mark,
+                  onPressed: _addUnit),
             ],
           ),
         ),
@@ -1040,12 +1003,10 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setStateModal) {
-          final selectedFamily = _families
-              .where((f) => f.id == _selectedPayerId)
-              .toList();
-          final selectedName = selectedFamily.isEmpty
-              ? null
-              : selectedFamily.first.name;
+          final selectedUnit =
+              _units.where((u) => u.id == _selectedPayerId).toList();
+          final selectedName =
+              selectedUnit.isEmpty ? null : selectedUnit.first.name;
 
           return BlurredSheet(
             child: Padding(
@@ -1072,32 +1033,28 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                   const SizedBox(height: 18),
                   TextField(
                     controller: _expenseTitleController,
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: AppColors.labelPrimary),
                     decoration: _fieldDecoration("Expense Title"),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _expenseAmountController,
                     keyboardType: TextInputType.number,
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: AppColors.labelPrimary),
                     decoration: _fieldDecoration("Total Amount (₹)"),
                   ),
                   const SizedBox(height: 12),
-
-                  // Cupertino-style payer picker button
                   PressableScale(
                     scaleAmount: 0.98,
-                    onTap: _families.isEmpty
+                    onTap: _units.isEmpty
                         ? null
                         : () => _showPayerPicker(context, setStateModal),
                     child: Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 16,
-                      ),
+                          horizontal: 16, vertical: 16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.06),
+                        color: AppColors.labelPrimary.withOpacity(0.04),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Row(
@@ -1108,7 +1065,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                             style: TextStyle(
                               color: selectedName == null
                                   ? AppColors.labelTertiary
-                                  : Colors.white,
+                                  : AppColors.labelPrimary,
                               fontSize: 15,
                             ),
                           ),
@@ -1140,7 +1097,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
   }
 
   void _showPayerPicker(BuildContext context, StateSetter setStateModal) {
-    int initialIndex = _families.indexWhere((f) => f.id == _selectedPayerId);
+    int initialIndex = _units.indexWhere((u) => u.id == _selectedPayerId);
     if (initialIndex < 0) initialIndex = 0;
 
     showModalBottomSheet(
@@ -1161,15 +1118,13 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                     children: [
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text(
-                          "Cancel",
-                          style: TextStyle(color: AppColors.labelSecondary),
-                        ),
+                        child: const Text("Cancel",
+                            style: TextStyle(color: AppColors.labelSecondary)),
                       ),
                       TextButton(
                         onPressed: () {
                           setStateModal(() {
-                            _selectedPayerId = _families[tempIndex].id;
+                            _selectedPayerId = _units[tempIndex].id;
                           });
                           HapticFeedback.selectionClick();
                           Navigator.pop(context);
@@ -1177,9 +1132,8 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                         child: const Text(
                           "Done",
                           style: TextStyle(
-                            color: AppColors.blue,
-                            fontWeight: FontWeight.w600,
-                          ),
+                              color: AppColors.green,
+                              fontWeight: FontWeight.w600),
                         ),
                       ),
                     ],
@@ -1189,22 +1143,18 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                   child: CupertinoPicker(
                     backgroundColor: Colors.transparent,
                     itemExtent: 40,
-                    scrollController: FixedExtentScrollController(
-                      initialItem: initialIndex,
-                    ),
+                    scrollController:
+                        FixedExtentScrollController(initialItem: initialIndex),
                     onSelectedItemChanged: (i) => tempIndex = i,
-                    children: _families
-                        .map(
-                          (f) => Center(
-                            child: Text(
-                              f.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 17,
+                    children: _units
+                        .map((u) => Center(
+                              child: Text(
+                                u.name,
+                                style: const TextStyle(
+                                    color: AppColors.labelPrimary,
+                                    fontSize: 17),
                               ),
-                            ),
-                          ),
-                        )
+                            ))
                         .toList(),
                   ),
                 ),
@@ -1217,9 +1167,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
   }
 
   void _showExportBottomSheet(
-    BuildContext context,
-    List<SettlementTransfer> settlements,
-  ) {
+      BuildContext context, List<SettlementTransfer> settlements) {
     HapticFeedback.selectionClick();
     showModalBottomSheet(
       context: context,
@@ -1244,14 +1192,11 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
               const SizedBox(height: 8),
               GhostRow(
                 icon: CupertinoIcons.doc_richtext,
-                iconColor: AppColors.red,
+                iconColor: AppColors.green,
                 title: "Export as PDF Report",
                 subtitle: "Clean, printable summary",
-                trailing: const Icon(
-                  CupertinoIcons.chevron_right,
-                  color: AppColors.labelTertiary,
-                  size: 16,
-                ),
+                trailing: const Icon(CupertinoIcons.chevron_right,
+                    color: AppColors.labelTertiary, size: 16),
                 onTap: () {
                   Navigator.pop(context);
                   ExpenseExportService.exportPdf(settlements: settlements);
@@ -1259,14 +1204,11 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
               ),
               GhostRow(
                 icon: CupertinoIcons.doc_text,
-                iconColor: AppColors.blue,
+                iconColor: Colors.white,
                 title: "Export as Document (.txt)",
                 subtitle: "Plain text, easy to paste anywhere",
-                trailing: const Icon(
-                  CupertinoIcons.chevron_right,
-                  color: AppColors.labelTertiary,
-                  size: 16,
-                ),
+                trailing: const Icon(CupertinoIcons.chevron_right,
+                    color: AppColors.labelTertiary, size: 16),
                 onTap: () {
                   Navigator.pop(context);
                   ExpenseExportService.exportDocument(settlements: settlements);
@@ -1280,17 +1222,14 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
   }
 }
 
-/// ---------------------------------------------------------------------------
-/// Wallet-style hero summary card — total pool, families, pending transfers.
-/// ---------------------------------------------------------------------------
 class _SummaryHeroCard extends StatelessWidget {
   final double totalPool;
-  final int familyCount;
+  final int unitCount;
   final int transferCount;
 
   const _SummaryHeroCard({
     required this.totalPool,
-    required this.familyCount,
+    required this.unitCount,
     required this.transferCount,
   });
 
@@ -1307,15 +1246,15 @@ class _SummaryHeroCard extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color(0xFF4B2E9E), // deep violet
-                  AppColors.indigo,
-                  AppColors.blue,
+                  Color(0xFF000000),
+                  Color(0xFF1C1C1E),
+                  Color(0xFF2A2A2C),
                 ],
                 stops: [0.0, 0.55, 1.0],
               ),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.indigo.withOpacity(0.35),
+                  color: Colors.black.withOpacity(0.22),
                   blurRadius: 26,
                   offset: const Offset(0, 14),
                 ),
@@ -1337,7 +1276,7 @@ class _SummaryHeroCard extends StatelessWidget {
                 Text(
                   "₹${totalPool.toStringAsFixed(2)}",
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.green,
                     fontSize: 34,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
@@ -1346,25 +1285,15 @@ class _SummaryHeroCard extends StatelessWidget {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    _heroStat(
-                      CupertinoIcons.house_fill,
-                      "$familyCount",
-                      "Families",
-                    ),
+                    _heroStat(CupertinoIcons.house_fill, "$unitCount", "Units"),
                     const SizedBox(width: 24),
-                    _heroStat(
-                      CupertinoIcons.arrow_right_arrow_left,
-                      "$transferCount",
-                      "To Settle",
-                    ),
+                    _heroStat(CupertinoIcons.arrow_right_arrow_left,
+                        "$transferCount", "To Settle"),
                   ],
                 ),
               ],
             ),
           ),
-          // Diagonal glass sheen — a soft streak of light across the top-left
-          // corner, the way premium cards (Apple Card, banking apps) catch
-          // light without resorting to a literal circular highlight.
           Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -1381,7 +1310,6 @@ class _SummaryHeroCard extends StatelessWidget {
               ),
             ),
           ),
-          // Thin light edge — mimics the beveled rim of a physical card.
           Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -1408,10 +1336,7 @@ class _SummaryHeroCard extends StatelessWidget {
         Text(
           value,
           style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14.5,
-            fontWeight: FontWeight.w700,
-          ),
+              color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w700),
         ),
         const SizedBox(width: 4),
         Text(
@@ -1423,11 +1348,6 @@ class _SummaryHeroCard extends StatelessWidget {
   }
 }
 
-/// ---------------------------------------------------------------------------
-/// Collapsing large-title header: expands to a 34pt bold title, and as the
-/// user scrolls it shrinks into a small pinned title with a blurred bar
-/// behind it — the exact behavior of Messages / Mail / App Store on iOS.
-/// ---------------------------------------------------------------------------
 class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
   final String title;
   final double topPadding;
@@ -1445,10 +1365,7 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
     final range = maxExtent - minExtent;
     final progress = range <= 0 ? 1.0 : (shrinkOffset / range).clamp(0.0, 1.0);
     final largeTitleOpacity = (1 - progress * 1.7).clamp(0.0, 1.0);
@@ -1463,7 +1380,7 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
             color: Colors.black.withOpacity(0.6 * progress),
             border: Border(
               bottom: BorderSide(
-                color: Colors.white.withOpacity(0.08 * progress),
+                color: AppColors.labelPrimary.withOpacity(0.08 * progress),
                 width: 0.6,
               ),
             ),
@@ -1480,7 +1397,7 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
                     child: Text(
                       title,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: AppColors.labelPrimary,
                         fontSize: 17,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1497,7 +1414,7 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
                   child: Text(
                     title,
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: AppColors.labelPrimary,
                       fontSize: 32,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.2,
