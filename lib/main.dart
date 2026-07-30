@@ -2,10 +2,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'models/expense_models.dart';
 import 'services/export_service.dart';
 import 'services/storage_service.dart';
 import 'widgets/reusable_components.dart';
+import 'pages/guide_page.dart';
 
 void main() {
   runApp(const ExpenseSplitterApp());
@@ -16,24 +18,37 @@ class ExpenseSplitterApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseTheme = ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.green,
+        brightness: Brightness.dark,
+      ),
+      scaffoldBackgroundColor: AppColors.bg,
+      cardColor: AppColors.secondaryBg,
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: Colors.transparent,
+    );
+
     return MaterialApp(
       title: 'Expense Splitter',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: '.SF Pro Text',
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.green,
-          brightness: Brightness.dark,
-        ),
-        scaffoldBackgroundColor: AppColors.bg,
-        cardColor: AppColors.secondaryBg,
-        splashFactory: NoSplash.splashFactory,
-        highlightColor: Colors.transparent,
+      theme: baseTheme.copyWith(
+        textTheme: GoogleFonts.dmSansTextTheme(baseTheme.textTheme),
       ),
       home: const ExpenseHomeScreen(),
     );
   }
+}
+
+class CurrencyOption {
+  final String code;
+  final String symbol;
+  final String name;
+
+  const CurrencyOption(
+      {required this.code, required this.symbol, required this.name});
 }
 
 class ExpenseHomeScreen extends StatefulWidget {
@@ -47,15 +62,27 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
   final List<FamilyUnit> _units = [];
   final List<ExpenseEntry> _expenses = [];
 
+  final List<CurrencyOption> _currencies = const [
+    CurrencyOption(code: 'INR', symbol: '₹', name: 'Indian Rupee'),
+    CurrencyOption(code: 'USD', symbol: '\$', name: 'US Dollar'),
+    CurrencyOption(code: 'EUR', symbol: '€', name: 'Euro'),
+    CurrencyOption(code: 'GBP', symbol: '£', name: 'British Pound'),
+    CurrencyOption(code: 'CAD', symbol: 'CA\$', name: 'Canadian Dollar'),
+    CurrencyOption(code: 'AUD', symbol: 'A\$', name: 'Australian Dollar'),
+    CurrencyOption(code: 'AED', symbol: 'AED ', name: 'UAE Dirham'),
+    CurrencyOption(code: 'SGD', symbol: 'S\$', name: 'Singapore Dollar'),
+    CurrencyOption(code: 'JPY', symbol: '¥', name: 'Japanese Yen'),
+  ];
+
+  late CurrencyOption _selectedCurrency = _currencies[0];
+
   final TextEditingController _unitNameController = TextEditingController();
   final TextEditingController _membersController = TextEditingController();
 
   final TextEditingController _expenseTitleController = TextEditingController();
   final TextEditingController _expenseAmountController =
       TextEditingController();
-  String? _selectedPayerId;
 
-  // Add or Edit Unit
   void _saveUnit({String? editId}) {
     if (_unitNameController.text.isEmpty) return;
     HapticFeedback.lightImpact();
@@ -92,11 +119,25 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
     Navigator.pop(context);
   }
 
-  // Add or Edit Expense
-  void _saveExpense({String? editId}) {
+  void _saveExpense({
+    String? editId,
+    required Map<String, double> payerContributions,
+    required List<String> participatingMembers,
+  }) {
     if (_expenseTitleController.text.isEmpty ||
-        _expenseAmountController.text.isEmpty ||
-        _selectedPayerId == null) return;
+        _expenseAmountController.text.isEmpty) return;
+
+    double totalAmount = double.tryParse(_expenseAmountController.text) ?? 0.0;
+
+    List<ExpensePayerContribution> payersList = [];
+    payerContributions.forEach((familyId, amt) {
+      if (amt > 0) {
+        payersList
+            .add(ExpensePayerContribution(familyId: familyId, amountPaid: amt));
+      }
+    });
+
+    if (payersList.isEmpty) return;
 
     HapticFeedback.lightImpact();
     setState(() {
@@ -106,9 +147,10 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
           _expenses[index] = ExpenseEntry(
             id: editId,
             title: _expenseTitleController.text.trim(),
-            paidByFamilyId: _selectedPayerId!,
-            amount: double.tryParse(_expenseAmountController.text) ?? 0.0,
+            payers: payersList,
+            amount: totalAmount,
             participatingFamilyIds: _units.map((u) => u.id).toList(),
+            participatingMemberNames: participatingMembers,
           );
         }
       } else {
@@ -116,23 +158,29 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
           ExpenseEntry(
             id: DateTime.now().millisecondsSinceEpoch.toString(),
             title: _expenseTitleController.text.trim(),
-            paidByFamilyId: _selectedPayerId!,
-            amount: double.tryParse(_expenseAmountController.text) ?? 0.0,
+            payers: payersList,
+            amount: totalAmount,
             participatingFamilyIds: _units.map((u) => u.id).toList(),
+            participatingMemberNames: participatingMembers,
           ),
         );
       }
       _expenseTitleController.clear();
       _expenseAmountController.clear();
-      _selectedPayerId = null;
     });
     Navigator.pop(context);
   }
 
   double _getUnitTotalPaid(String unitId) {
-    return _expenses
-        .where((e) => e.paidByFamilyId == unitId)
-        .fold(0.0, (sum, e) => sum + e.amount);
+    double total = 0.0;
+    for (var e in _expenses) {
+      for (var p in e.payers) {
+        if (p.familyId == unitId) {
+          total += p.amountPaid;
+        }
+      }
+    }
+    return total;
   }
 
   List<SettlementTransfer> _calculateSettlements() {
@@ -141,26 +189,40 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       netBalances[u.name] = 0.0;
     }
 
-    int totalMembersCount = 0;
-    for (var u in _units) {
-      int memberCount = u.members.isEmpty ? 1 : u.members.length;
-      totalMembersCount += memberCount;
-    }
-
     for (var exp in _expenses) {
-      String payerName = _units
-          .firstWhere((u) => u.id == exp.paidByFamilyId,
-              orElse: () => FamilyUnit(id: '', name: 'Unknown', members: []))
-          .name;
-      if (payerName == 'Unknown') continue;
-      netBalances[payerName] = (netBalances[payerName] ?? 0.0) + exp.amount;
+      for (var p in exp.payers) {
+        final payerUnit = _units.firstWhere(
+          (u) => u.id == p.familyId,
+          orElse: () => FamilyUnit(id: '', name: 'Unknown', members: []),
+        );
+        if (payerUnit.name != 'Unknown') {
+          netBalances[payerUnit.name] =
+              (netBalances[payerUnit.name] ?? 0.0) + p.amountPaid;
+        }
+      }
 
-      if (totalMembersCount > 0) {
-        double perHeadAmount = exp.amount / totalMembersCount;
+      List<String> activeParticipants = exp.participatingMemberNames;
+      if (activeParticipants.isEmpty) {
         for (var u in _units) {
-          int memberCount = u.members.isEmpty ? 1 : u.members.length;
-          double unitShare = perHeadAmount * memberCount;
-          netBalances[u.name] = (netBalances[u.name] ?? 0.0) - unitShare;
+          if (u.members.isEmpty) {
+            activeParticipants.add(u.name);
+          } else {
+            activeParticipants.addAll(u.members);
+          }
+        }
+      }
+
+      if (activeParticipants.isNotEmpty) {
+        double perHeadAmount = exp.amount / activeParticipants.length;
+        for (var u in _units) {
+          List<String> unitMemberKeys =
+              u.members.isEmpty ? [u.name] : u.members;
+          int participatingCountInUnit = unitMemberKeys
+              .where((m) => activeParticipants.contains(m))
+              .length;
+
+          double unitLiability = perHeadAmount * participatingCountInUnit;
+          netBalances[u.name] = (netBalances[u.name] ?? 0.0) - unitLiability;
         }
       }
     }
@@ -214,6 +276,67 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
     );
   }
 
+  void _showCurrencyPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ReusableBlurredSheet(
+        radius: 24,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sheetGrabber(),
+              const Text("Select Currency",
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.labelPrimary)),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: _currencies.length,
+                  itemBuilder: (context, index) {
+                    final curr = _currencies[index];
+                    final isSelected = curr.code == _selectedCurrency.code;
+                    return ListTile(
+                      title: Text("${curr.name} (${curr.code})",
+                          style: TextStyle(
+                              color: isSelected
+                                  ? AppColors.green
+                                  : AppColors.labelPrimary,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal)),
+                      trailing: Text(curr.symbol,
+                          style: TextStyle(
+                              fontSize: 16,
+                              color: isSelected
+                                  ? AppColors.green
+                                  : AppColors.labelSecondary,
+                              fontWeight: FontWeight.bold)),
+                      onTap: () {
+                        setState(() {
+                          _selectedCurrency = curr;
+                        });
+                        Navigator.pop(context);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final settlements = _calculateSettlements();
@@ -247,11 +370,20 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                 delegate: _CollapsingHeaderDelegate(
                   title: "Expense Splitter",
                   topPadding: topPadding,
+                  selectedCurrencySymbol: _selectedCurrency.symbol,
+                  onCurrencyTap: _showCurrencyPicker,
                   onHistoryTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                           builder: (context) => const SavedSessionsPage()),
+                    );
+                  },
+                  onGuideTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const GuidePage()),
                     );
                   },
                 ),
@@ -266,6 +398,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                         totalPool: _totalPool,
                         unitCount: _units.length,
                         transferCount: settlements.length,
+                        currencySymbol: _selectedCurrency.symbol,
                       ),
                       const SizedBox(height: 20),
                       Row(
@@ -338,7 +471,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                                           .labelPrimary)),
                                               const SizedBox(height: 2),
                                               Text(
-                                                  "Paid: ₹${totalPaid.toStringAsFixed(2)} • ${u.members.isEmpty ? 'No members' : u.members.join(', ')}",
+                                                  "Paid: ${_selectedCurrency.symbol}${totalPaid.toStringAsFixed(2)} • ${u.members.isEmpty ? 'No members' : u.members.join(', ')}",
                                                   maxLines: 1,
                                                   overflow:
                                                       TextOverflow.ellipsis,
@@ -366,8 +499,100 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                             setState(() {
                                               _units.removeWhere(
                                                   (item) => item.id == u.id);
-                                              _expenses.removeWhere((e) =>
-                                                  e.paidByFamilyId == u.id);
+                                              for (var e in _expenses) {
+                                                e.payers.removeWhere(
+                                                    (p) => p.familyId == u.id);
+                                              }
+                                              _expenses.removeWhere(
+                                                  (e) => e.payers.isEmpty);
+                                            });
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                      const SizedBox(height: 28),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("EXPENSES LIST",
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.6,
+                                  color: AppColors.labelSecondary)),
+                          if (_expenses.isNotEmpty)
+                            ReusableBadge(text: "${_expenses.length}"),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _expenses.isEmpty
+                          ? const EmptyState(
+                              icon: CupertinoIcons.doc_text,
+                              title: "No expenses logged",
+                              subtitle: "Tap “Add Expense” to track expenses.")
+                          : ReusableGlassCard(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 4),
+                              child: Column(
+                                children: _expenses.map((e) {
+                                  String payerSummary = e.payers.map((p) {
+                                    final uMatch = _units.firstWhere(
+                                      (u) => u.id == p.familyId,
+                                      orElse: () => FamilyUnit(
+                                          id: '', name: 'Unknown', members: []),
+                                    );
+                                    return "${uMatch.name}: ${_selectedCurrency.symbol}${p.amountPaid.toStringAsFixed(0)}";
+                                  }).join(', ');
+
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 10),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(e.title,
+                                                  style: const TextStyle(
+                                                      fontSize: 15.5,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: AppColors
+                                                          .labelPrimary)),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                  "Paid by [$payerSummary] • ${_selectedCurrency.symbol}${e.amount.toStringAsFixed(2)}",
+                                                  style: const TextStyle(
+                                                      fontSize: 12.5,
+                                                      color: AppColors
+                                                          .labelTertiary)),
+                                            ],
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                              CupertinoIcons.pencil,
+                                              size: 16,
+                                              color: AppColors.labelSecondary),
+                                          onPressed: () =>
+                                              _showAddOrEditExpenseSheet(
+                                                  context,
+                                                  expenseToEdit: e),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(CupertinoIcons.trash,
+                                              size: 16,
+                                              color: AppColors.redAccent),
+                                          onPressed: () {
+                                            setState(() {
+                                              _expenses.removeWhere(
+                                                  (item) => item.id == e.id);
                                             });
                                           },
                                         ),
@@ -451,7 +676,8 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                             ),
                                           ),
                                         ),
-                                        Text("₹${s.amount.toStringAsFixed(2)}",
+                                        Text(
+                                            "${_selectedCurrency.symbol}${s.amount.toStringAsFixed(2)}",
                                             style: const TextStyle(
                                                 fontSize: 16,
                                                 fontWeight: FontWeight.w700,
@@ -561,14 +787,32 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
 
   void _showAddOrEditExpenseSheet(BuildContext context,
       {ExpenseEntry? expenseToEdit}) {
+    _expenseTitleController.text = expenseToEdit?.title ?? '';
+    _expenseAmountController.text =
+        expenseToEdit != null ? expenseToEdit.amount.toString() : '';
+
+    Map<String, double> payerContributions = {};
+    for (var u in _units) {
+      payerContributions[u.id] = 0.0;
+    }
+
     if (expenseToEdit != null) {
-      _expenseTitleController.text = expenseToEdit.title;
-      _expenseAmountController.text = expenseToEdit.amount.toString();
-      _selectedPayerId = expenseToEdit.paidByFamilyId;
+      for (var p in expenseToEdit.payers) {
+        payerContributions[p.familyId] = p.amountPaid;
+      }
+    }
+
+    Set<String> selectedParticipants = {};
+    if (expenseToEdit != null) {
+      selectedParticipants = Set.from(expenseToEdit.participatingMemberNames);
     } else {
-      _expenseTitleController.clear();
-      _expenseAmountController.clear();
-      _selectedPayerId = null;
+      for (var u in _units) {
+        if (u.members.isEmpty) {
+          selectedParticipants.add(u.name);
+        } else {
+          selectedParticipants.addAll(u.members);
+        }
+      }
     }
 
     HapticFeedback.selectionClick();
@@ -578,11 +822,6 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setStateModal) {
-          final selectedUnit =
-              _units.where((u) => u.id == _selectedPayerId).toList();
-          final selectedName =
-              selectedUnit.isEmpty ? null : selectedUnit.first.name;
-
           return ReusableBlurredSheet(
             child: Padding(
               padding: EdgeInsets.only(
@@ -590,135 +829,157 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                   left: 24,
                   right: 24,
                   top: 12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _sheetGrabber(),
-                  Text(expenseToEdit == null ? "Add Expense" : "Edit Expense",
-                      style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.labelPrimary,
-                          letterSpacing: -0.3)),
-                  const SizedBox(height: 18),
-                  ReusableTextField(
-                      controller: _expenseTitleController,
-                      label: "Expense Title"),
-                  const SizedBox(height: 12),
-                  ReusableTextField(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sheetGrabber(),
+                    Text(expenseToEdit == null ? "Add Expense" : "Edit Expense",
+                        style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.labelPrimary,
+                            letterSpacing: -0.3)),
+                    const SizedBox(height: 18),
+                    ReusableTextField(
+                        controller: _expenseTitleController,
+                        label: "Expense Title"),
+                    const SizedBox(height: 12),
+                    ReusableTextField(
                       controller: _expenseAmountController,
-                      label: "Total Amount (₹)",
-                      keyboardType: TextInputType.number),
-                  const SizedBox(height: 12),
-                  PressableScale(
-                    scaleAmount: 0.98,
-                    onTap: _units.isEmpty
-                        ? null
-                        : () => _showPayerPicker(context, setStateModal),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 16),
-                      decoration: BoxDecoration(
-                          color: AppColors.labelPrimary.withOpacity(0.04),
-                          borderRadius: BorderRadius.circular(14)),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(selectedName ?? "Select Payer",
-                              style: TextStyle(
-                                  color: selectedName == null
-                                      ? AppColors.labelTertiary
-                                      : AppColors.labelPrimary,
-                                  fontSize: 15)),
-                          const Icon(CupertinoIcons.chevron_down,
-                              color: AppColors.labelTertiary, size: 16),
-                        ],
-                      ),
+                      label: "Total Amount (${_selectedCurrency.symbol})",
+                      keyboardType: TextInputType.number,
+                      onChanged: (val) {
+                        setStateModal(() {});
+                      },
                     ),
-                  ),
-                  const SizedBox(height: 22),
-                  ReusableButton(
-                    label: expenseToEdit == null
-                        ? "Save Expense"
-                        : "Update Expense",
-                    icon: CupertinoIcons.check_mark,
-                    onPressed: () {
-                      _saveExpense(editId: expenseToEdit?.id);
-                      setState(() {});
-                    },
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    const Text("Who paid how much?",
+                        style: TextStyle(
+                            color: AppColors.labelSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    ..._units.map((u) {
+                      final ctrl = TextEditingController(
+                        text: payerContributions[u.id] == null ||
+                                payerContributions[u.id] == 0.0
+                            ? ''
+                            : payerContributions[u.id].toString(),
+                      );
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: Text(u.name,
+                                  style: const TextStyle(
+                                      color: AppColors.labelPrimary,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500)),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: ctrl,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(
+                                    color: AppColors.labelPrimary,
+                                    fontSize: 14),
+                                onChanged: (value) {
+                                  payerContributions[u.id] =
+                                      double.tryParse(value) ?? 0.0;
+                                },
+                                decoration: InputDecoration(
+                                  hintText: "${_selectedCurrency.symbol}0.00",
+                                  hintStyle:
+                                      TextStyle(color: AppColors.labelTertiary),
+                                  filled: true,
+                                  fillColor:
+                                      AppColors.labelPrimary.withOpacity(0.04),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 12),
+                                  border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide.none),
+                                  focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(
+                                          color: AppColors.green, width: 1.2)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 16),
+                    const Text("Split among members:",
+                        style: TextStyle(
+                            color: AppColors.labelSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    ..._units.map((u) {
+                      List<String> memberList =
+                          u.members.isEmpty ? [u.name] : u.members;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(u.name,
+                              style: const TextStyle(
+                                  color: AppColors.green,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12)),
+                          ...memberList.map((m) {
+                            bool isSelected = selectedParticipants.contains(m);
+                            return CheckboxListTile(
+                              title:
+                                  Text(m, style: const TextStyle(fontSize: 14)),
+                              value: isSelected,
+                              activeColor: AppColors.green,
+                              checkColor: Colors.black,
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              onChanged: (bool? value) {
+                                setStateModal(() {
+                                  if (value == true) {
+                                    selectedParticipants.add(m);
+                                  } else {
+                                    selectedParticipants.remove(m);
+                                  }
+                                });
+                              },
+                            );
+                          }),
+                        ],
+                      );
+                    }),
+                    const SizedBox(height: 22),
+                    ReusableButton(
+                      label: expenseToEdit == null
+                          ? "Save Expense"
+                          : "Update Expense",
+                      icon: CupertinoIcons.check_mark,
+                      onPressed: () {
+                        _saveExpense(
+                          editId: expenseToEdit?.id,
+                          payerContributions: payerContributions,
+                          participatingMembers: selectedParticipants.toList(),
+                        );
+                        setState(() {});
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
           );
         },
       ),
-    );
-  }
-
-  void _showPayerPicker(BuildContext context, StateSetter setStateModal) {
-    int initialIndex = _units.indexWhere((u) => u.id == _selectedPayerId);
-    if (initialIndex < 0) initialIndex = 0;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        int tempIndex = initialIndex;
-        return ReusableBlurredSheet(
-          radius: 24,
-          child: SizedBox(
-            height: 260,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text("Cancel",
-                              style:
-                                  TextStyle(color: AppColors.labelSecondary))),
-                      TextButton(
-                        onPressed: () {
-                          setStateModal(
-                              () => _selectedPayerId = _units[tempIndex].id);
-                          HapticFeedback.selectionClick();
-                          Navigator.pop(context);
-                        },
-                        child: const Text("Done",
-                            style: TextStyle(
-                                color: AppColors.green,
-                                fontWeight: FontWeight.w600)),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: CupertinoPicker(
-                    backgroundColor: Colors.transparent,
-                    itemExtent: 40,
-                    scrollController:
-                        FixedExtentScrollController(initialItem: initialIndex),
-                    onSelectedItemChanged: (i) => tempIndex = i,
-                    children: _units
-                        .map((u) => Center(
-                            child: Text(u.name,
-                                style: const TextStyle(
-                                    color: AppColors.labelPrimary,
-                                    fontSize: 17))))
-                        .toList(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -865,12 +1126,13 @@ class _SummaryHeroCard extends StatelessWidget {
   final double totalPool;
   final int unitCount;
   final int transferCount;
+  final String currencySymbol;
 
-  const _SummaryHeroCard({
-    required this.totalPool,
-    required this.unitCount,
-    required this.transferCount,
-  });
+  const _SummaryHeroCard(
+      {required this.totalPool,
+      required this.unitCount,
+      required this.transferCount,
+      required this.currencySymbol});
 
   @override
   Widget build(BuildContext context) {
@@ -888,43 +1150,31 @@ class _SummaryHeroCard extends StatelessWidget {
             colors: [Color(0xFF000000), Color(0xFF1C1C1E), Color(0xFF2A2A2C)],
             stops: [0.0, 0.55, 1.0],
           ),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.16),
-            width: 1,
-          ),
+          border: Border.all(color: Colors.white.withOpacity(0.16), width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              "TOTAL POOLED",
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.75),
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.8,
-              ),
-            ),
+            Text("TOTAL POOLED",
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.75),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.8)),
             const SizedBox(height: 6),
-            Text(
-              "₹${totalPool.toStringAsFixed(2)}",
-              style: const TextStyle(
-                color: AppColors.green,
-                fontSize: 34,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
-              ),
-            ),
+            Text("$currencySymbol${totalPool.toStringAsFixed(2)}",
+                style: const TextStyle(
+                    color: AppColors.green,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5)),
             const SizedBox(height: 16),
             Row(
               children: [
                 _heroStat(CupertinoIcons.house_fill, "$unitCount", "Units"),
                 const SizedBox(width: 24),
-                _heroStat(
-                  CupertinoIcons.arrow_right_arrow_left,
-                  "$transferCount",
-                  "To Settle",
-                ),
+                _heroStat(CupertinoIcons.arrow_right_arrow_left,
+                    "$transferCount", "To Settle"),
               ],
             ),
           ],
@@ -938,22 +1188,15 @@ class _SummaryHeroCard extends StatelessWidget {
       children: [
         Icon(icon, color: Colors.white.withOpacity(0.85), size: 15),
         const SizedBox(width: 6),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14.5,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        Text(value,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14.5,
+                fontWeight: FontWeight.w700)),
         const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.75),
-            fontSize: 13,
-          ),
-        ),
+        Text(label,
+            style:
+                TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 13)),
       ],
     );
   }
@@ -962,12 +1205,19 @@ class _SummaryHeroCard extends StatelessWidget {
 class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
   final String title;
   final double topPadding;
+  final String selectedCurrencySymbol;
+  final VoidCallback onCurrencyTap;
   final VoidCallback onHistoryTap;
+  final VoidCallback onGuideTap;
 
-  _CollapsingHeaderDelegate(
-      {required this.title,
-      required this.topPadding,
-      required this.onHistoryTap});
+  _CollapsingHeaderDelegate({
+    required this.title,
+    required this.topPadding,
+    required this.selectedCurrencySymbol,
+    required this.onCurrencyTap,
+    required this.onHistoryTap,
+    required this.onGuideTap,
+  });
 
   @override
   double get minExtent => 52.0 + topPadding;
@@ -995,12 +1245,52 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
           child: Stack(
             children: [
               Positioned(
-                right: 16,
+                right: 12,
                 top: 8,
-                child: IconButton(
-                  icon: const Icon(CupertinoIcons.time, color: AppColors.green),
-                  onPressed: onHistoryTap,
-                  tooltip: "View Saved Splits",
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InkWell(
+                      onTap: onCurrencyTap,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.green.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                              color: AppColors.green.withOpacity(0.4),
+                              width: 1),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(selectedCurrencySymbol,
+                                style: const TextStyle(
+                                    color: AppColors.green,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13)),
+                            const SizedBox(width: 4),
+                            const Icon(CupertinoIcons.chevron_down,
+                                size: 12, color: AppColors.green),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(CupertinoIcons.time,
+                          color: AppColors.green),
+                      onPressed: onHistoryTap,
+                      tooltip: "View Saved Splits",
+                    ),
+                    IconButton(
+                      icon: const Icon(CupertinoIcons.question_circle,
+                          color: AppColors.green),
+                      onPressed: onGuideTap,
+                      tooltip: "User Guide",
+                    ),
+                  ],
                 ),
               ),
               Positioned(

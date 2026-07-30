@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:pdf/pdf.dart' as pdf_color; // Added for colors
+import 'package:pdf/pdf.dart' as pdf_color;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:path_provider/path_provider.dart';
@@ -30,7 +30,7 @@ class ExpenseExportService {
                   fontSize: 12,
                   color: pdf_color.PdfColors.grey700,
                 ),
-              ), // Fixed prefix
+              ),
               pw.SizedBox(height: 20),
               pw.Text(
                 "Final Settlement (Payers to Payers Only):",

@@ -18,36 +18,71 @@ class FamilyUnit {
       );
 }
 
+class ExpensePayerContribution {
+  final String familyId;
+  final double amountPaid;
+
+  ExpensePayerContribution({
+    required this.familyId,
+    required this.amountPaid,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'familyId': familyId,
+        'amountPaid': amountPaid,
+      };
+
+  factory ExpensePayerContribution.fromJson(Map<String, dynamic> json) =>
+      ExpensePayerContribution(
+        familyId: json['familyId'],
+        amountPaid: (json['amountPaid'] as num).toDouble(),
+      );
+}
+
 class ExpenseEntry {
   final String id;
   final String title;
-  final String paidByFamilyId;
+  final List<ExpensePayerContribution> payers;
   final double amount;
   final List<String> participatingFamilyIds;
+  final List<String> participatingMemberNames;
 
   ExpenseEntry({
     required this.id,
     required this.title,
-    required this.paidByFamilyId,
+    required this.payers,
     required this.amount,
     required this.participatingFamilyIds,
+    required this.participatingMemberNames,
   });
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
-        'paidByFamilyId': paidByFamilyId,
+        'payers': payers.map((p) => p.toJson()).toList(),
         'amount': amount,
         'participatingFamilyIds': participatingFamilyIds,
+        'participatingMemberNames': participatingMemberNames,
       };
 
   factory ExpenseEntry.fromJson(Map<String, dynamic> json) => ExpenseEntry(
         id: json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
         title: json['title'],
-        paidByFamilyId: json['paidByFamilyId'],
-        amount: json['amount'],
+        payers: json['payers'] != null
+            ? (json['payers'] as List)
+                .map((p) => ExpensePayerContribution.fromJson(p))
+                .toList()
+            : [
+                ExpensePayerContribution(
+                  familyId: json['paidByFamilyId'] ?? '',
+                  amountPaid: (json['amount'] as num?)?.toDouble() ?? 0.0,
+                )
+              ],
+        amount: (json['amount'] as num).toDouble(),
         participatingFamilyIds:
-            List<String>.from(json['participatingFamilyIds']),
+            List<String>.from(json['participatingFamilyIds'] ?? []),
+        participatingMemberNames:
+            List<String>.from(json['participatingMemberNames'] ?? []),
       );
 }
 
@@ -65,7 +100,7 @@ class SettlementTransfer {
       SettlementTransfer(
         from: json['from'],
         to: json['to'],
-        amount: json['amount'],
+        amount: (json['amount'] as num).toDouble(),
       );
 }
 
@@ -99,7 +134,7 @@ class SavedSplitSession {
       SavedSplitSession(
         id: json['id'],
         dateString: json['dateString'],
-        totalPool: json['totalPool'],
+        totalPool: (json['totalPool'] as num).toDouble(),
         units:
             (json['units'] as List).map((u) => FamilyUnit.fromJson(u)).toList(),
         expenses: (json['expenses'] as List)

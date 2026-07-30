@@ -143,6 +143,7 @@ class ReusableTextField extends StatelessWidget {
   final TextInputType keyboardType;
   final BorderRadius? borderRadius;
   final Color? fillColor;
+  final ValueChanged<String>? onChanged;
 
   const ReusableTextField({
     Key? key,
@@ -151,6 +152,7 @@ class ReusableTextField extends StatelessWidget {
     this.keyboardType = TextInputType.text,
     this.borderRadius,
     this.fillColor,
+    this.onChanged,
   }) : super(key: key);
 
   @override
@@ -159,6 +161,7 @@ class ReusableTextField extends StatelessWidget {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      onChanged: onChanged,
       style: const TextStyle(color: AppColors.labelPrimary),
       decoration: InputDecoration(
         labelText: label,
