@@ -7,6 +7,7 @@ import 'models/expense_models.dart';
 import 'services/export_service.dart';
 import 'services/storage_service.dart';
 import 'widgets/reusable_components.dart';
+import 'widgets/footer.dart';
 import 'pages/guide_page.dart';
 
 void main() {
@@ -76,6 +77,9 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
 
   late CurrencyOption _selectedCurrency = _currencies[0];
 
+  final GlobalKey<FormState> _unitFormKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> _expenseFormKey = GlobalKey<FormState>();
+
   final TextEditingController _unitNameController = TextEditingController();
   final TextEditingController _membersController = TextEditingController();
 
@@ -83,8 +87,27 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
   final TextEditingController _expenseAmountController =
       TextEditingController();
 
+  void _showTopSnackBar(String message, {bool isError = true}) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppColors.redAccent : AppColors.green,
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.only(
+          top: 20,
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.of(context).size.height - 150,
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   void _saveUnit({String? editId}) {
-    if (_unitNameController.text.isEmpty) return;
+    if (!(_unitFormKey.currentState?.validate() ?? false)) return;
+
     HapticFeedback.lightImpact();
     setState(() {
       if (editId != null) {
@@ -123,21 +146,37 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
     String? editId,
     required Map<String, double> payerContributions,
     required List<String> participatingMembers,
+    required StateSetter setStateModal,
   }) {
-    if (_expenseTitleController.text.isEmpty ||
-        _expenseAmountController.text.isEmpty) return;
+    if (!(_expenseFormKey.currentState?.validate() ?? false)) return;
 
     double totalAmount = double.tryParse(_expenseAmountController.text) ?? 0.0;
 
     List<ExpensePayerContribution> payersList = [];
+    double totalPaid = 0.0;
     payerContributions.forEach((familyId, amt) {
       if (amt > 0) {
         payersList
             .add(ExpensePayerContribution(familyId: familyId, amountPaid: amt));
+        totalPaid += amt;
       }
     });
 
-    if (payersList.isEmpty) return;
+    if (payersList.isEmpty) {
+      _showTopSnackBar("Please specify at least one payer contribution.");
+      return;
+    }
+
+    if ((totalPaid - totalAmount).abs() > 0.01) {
+      _showTopSnackBar(
+          "Sum of payer contributions ($totalPaid) must match total amount ($totalAmount).");
+      return;
+    }
+
+    if (participatingMembers.isEmpty) {
+      _showTopSnackBar("Select at least one member to split the expense with.");
+      return;
+    }
 
     HapticFeedback.lightImpact();
     setState(() {
@@ -270,10 +309,8 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       settlements: settlements,
     );
     await ExpenseStorageService.saveSession(session);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text("Split session successfully saved to phone storage!")),
-    );
+    _showTopSnackBar("Split session successfully saved to phone storage!",
+        isError: false);
   }
 
   void _showCurrencyPicker() {
@@ -370,27 +407,11 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                 delegate: _CollapsingHeaderDelegate(
                   title: "Expense Splitter",
                   topPadding: topPadding,
-                  selectedCurrencySymbol: _selectedCurrency.symbol,
-                  onCurrencyTap: _showCurrencyPicker,
-                  onHistoryTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const SavedSessionsPage()),
-                    );
-                  },
-                  onGuideTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const GuidePage()),
-                    );
-                  },
                 ),
               ),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -417,8 +438,14 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                               icon: CupertinoIcons.doc_text_fill,
                               color: AppColors.tertiaryBg,
                               foreground: Colors.white,
-                              onPressed: () =>
-                                  _showAddOrEditExpenseSheet(context),
+                              onPressed: () {
+                                if (_units.isEmpty) {
+                                  _showTopSnackBar(
+                                      "Please add at least one unit before logging expenses.");
+                                  return;
+                                }
+                                _showAddOrEditExpenseSheet(context);
+                              },
                             ),
                           ),
                         ],
@@ -714,6 +741,28 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
               ),
             ],
           ),
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 24,
+            child: FloatingGlassFooter(
+              selectedCurrencySymbol: _selectedCurrency.symbol,
+              onCurrencyTap: _showCurrencyPicker,
+              onHistoryTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const SavedSessionsPage()),
+                );
+              },
+              onGuideTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const GuidePage()),
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
@@ -753,32 +802,81 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
               left: 24,
               right: 24,
               top: 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _sheetGrabber(),
-              Text(unitToEdit == null ? "Add Unit" : "Edit Unit",
-                  style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.labelPrimary,
-                      letterSpacing: -0.3)),
-              const SizedBox(height: 18),
-              ReusableTextField(
+          child: Form(
+            key: _unitFormKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sheetGrabber(),
+                Text(unitToEdit == null ? "Add Unit" : "Edit Unit",
+                    style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.labelPrimary,
+                        letterSpacing: -0.3)),
+                const SizedBox(height: 18),
+                TextFormField(
                   controller: _unitNameController,
-                  label: "Unit Name (e.g. Rony)"),
-              const SizedBox(height: 12),
-              ReusableTextField(
+                  style: const TextStyle(color: AppColors.labelPrimary),
+                  decoration: InputDecoration(
+                    labelText: "Unit Name (e.g. Rony)",
+                    labelStyle: const TextStyle(
+                        color: AppColors.labelTertiary, fontSize: 14.5),
+                    filled: true,
+                    fillColor: AppColors.labelPrimary.withOpacity(0.04),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 16),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(
+                            color: AppColors.green, width: 1.4)),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return "Please enter a unit name";
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
                   controller: _membersController,
-                  label: "Members (comma separated)"),
-              const SizedBox(height: 22),
-              ReusableButton(
-                label: unitToEdit == null ? "Save Unit" : "Update Unit",
-                icon: CupertinoIcons.check_mark,
-                onPressed: () => _saveUnit(editId: unitToEdit?.id),
-              ),
-            ],
+                  style: const TextStyle(color: AppColors.labelPrimary),
+                  decoration: InputDecoration(
+                    labelText: "Members (comma separated)",
+                    labelStyle: const TextStyle(
+                        color: AppColors.labelTertiary, fontSize: 14.5),
+                    filled: true,
+                    fillColor: AppColors.labelPrimary.withOpacity(0.04),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 16),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(
+                            color: AppColors.green, width: 1.4)),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return "Please enter at least one member";
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 22),
+                ReusableButton(
+                  label: unitToEdit == null ? "Save Unit" : "Update Unit",
+                  icon: CupertinoIcons.check_mark,
+                  onPressed: () => _saveUnit(editId: unitToEdit?.id),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -830,150 +928,208 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                   right: 24,
                   top: 12),
               child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sheetGrabber(),
-                    Text(expenseToEdit == null ? "Add Expense" : "Edit Expense",
-                        style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.labelPrimary,
-                            letterSpacing: -0.3)),
-                    const SizedBox(height: 18),
-                    ReusableTextField(
+                child: Form(
+                  key: _expenseFormKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _sheetGrabber(),
+                      Text(
+                          expenseToEdit == null
+                              ? "Add Expense"
+                              : "Edit Expense",
+                          style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.labelPrimary,
+                              letterSpacing: -0.3)),
+                      const SizedBox(height: 18),
+                      TextFormField(
                         controller: _expenseTitleController,
-                        label: "Expense Title"),
-                    const SizedBox(height: 12),
-                    ReusableTextField(
-                      controller: _expenseAmountController,
-                      label: "Total Amount (${_selectedCurrency.symbol})",
-                      keyboardType: TextInputType.number,
-                      onChanged: (val) {
-                        setStateModal(() {});
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    const Text("Who paid how much?",
-                        style: TextStyle(
-                            color: AppColors.labelSecondary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 8),
-                    ..._units.map((u) {
-                      final ctrl = TextEditingController(
-                        text: payerContributions[u.id] == null ||
-                                payerContributions[u.id] == 0.0
-                            ? ''
-                            : payerContributions[u.id].toString(),
-                      );
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8.0),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: Text(u.name,
+                        style: const TextStyle(color: AppColors.labelPrimary),
+                        decoration: InputDecoration(
+                          labelText: "Expense Title",
+                          labelStyle: const TextStyle(
+                              color: AppColors.labelTertiary, fontSize: 14.5),
+                          filled: true,
+                          fillColor: AppColors.labelPrimary.withOpacity(0.04),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 16),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none),
+                          focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                  color: AppColors.green, width: 1.4)),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return "Please enter an expense title";
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _expenseAmountController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: AppColors.labelPrimary),
+                        onChanged: (val) {
+                          setStateModal(() {});
+                        },
+                        decoration: InputDecoration(
+                          labelText:
+                              "Total Amount (${_selectedCurrency.symbol})",
+                          labelStyle: const TextStyle(
+                              color: AppColors.labelTertiary, fontSize: 14.5),
+                          filled: true,
+                          fillColor: AppColors.labelPrimary.withOpacity(0.04),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 16),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none),
+                          focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                  color: AppColors.green, width: 1.4)),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return "Please enter a total amount";
+                          }
+                          final amount = double.tryParse(value);
+                          if (amount == null || amount <= 0) {
+                            return "Please enter a valid positive number";
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      const Text("Who paid how much?",
+                          style: TextStyle(
+                              color: AppColors.labelSecondary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      ..._units.map((u) {
+                        final ctrl = TextEditingController(
+                          text: payerContributions[u.id] == null ||
+                                  payerContributions[u.id] == 0.0
+                              ? ''
+                              : payerContributions[u.id].toString(),
+                        );
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: Text(u.name,
+                                    style: const TextStyle(
+                                        color: AppColors.labelPrimary,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500)),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 3,
+                                child: TextField(
+                                  controller: ctrl,
+                                  keyboardType: TextInputType.number,
                                   style: const TextStyle(
                                       color: AppColors.labelPrimary,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500)),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 3,
-                              child: TextField(
-                                controller: ctrl,
-                                keyboardType: TextInputType.number,
-                                style: const TextStyle(
-                                    color: AppColors.labelPrimary,
-                                    fontSize: 14),
-                                onChanged: (value) {
-                                  payerContributions[u.id] =
-                                      double.tryParse(value) ?? 0.0;
-                                },
-                                decoration: InputDecoration(
-                                  hintText: "${_selectedCurrency.symbol}0.00",
-                                  hintStyle:
-                                      TextStyle(color: AppColors.labelTertiary),
-                                  filled: true,
-                                  fillColor:
-                                      AppColors.labelPrimary.withOpacity(0.04),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 12),
-                                  border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                      borderSide: BorderSide.none),
-                                  focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                      borderSide: const BorderSide(
-                                          color: AppColors.green, width: 1.2)),
+                                      fontSize: 14),
+                                  onChanged: (value) {
+                                    payerContributions[u.id] =
+                                        double.tryParse(value) ?? 0.0;
+                                  },
+                                  decoration: InputDecoration(
+                                    hintText: "${_selectedCurrency.symbol}0.00",
+                                    hintStyle: TextStyle(
+                                        color: AppColors.labelTertiary),
+                                    filled: true,
+                                    fillColor: AppColors.labelPrimary
+                                        .withOpacity(0.04),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 12),
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        borderSide: BorderSide.none),
+                                    focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        borderSide: const BorderSide(
+                                            color: AppColors.green,
+                                            width: 1.2)),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 16),
-                    const Text("Split among members:",
-                        style: TextStyle(
-                            color: AppColors.labelSecondary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 8),
-                    ..._units.map((u) {
-                      List<String> memberList =
-                          u.members.isEmpty ? [u.name] : u.members;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(u.name,
-                              style: const TextStyle(
-                                  color: AppColors.green,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12)),
-                          ...memberList.map((m) {
-                            bool isSelected = selectedParticipants.contains(m);
-                            return CheckboxListTile(
-                              title:
-                                  Text(m, style: const TextStyle(fontSize: 14)),
-                              value: isSelected,
-                              activeColor: AppColors.green,
-                              checkColor: Colors.black,
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              onChanged: (bool? value) {
-                                setStateModal(() {
-                                  if (value == true) {
-                                    selectedParticipants.add(m);
-                                  } else {
-                                    selectedParticipants.remove(m);
-                                  }
-                                });
-                              },
-                            );
-                          }),
-                        ],
-                      );
-                    }),
-                    const SizedBox(height: 22),
-                    ReusableButton(
-                      label: expenseToEdit == null
-                          ? "Save Expense"
-                          : "Update Expense",
-                      icon: CupertinoIcons.check_mark,
-                      onPressed: () {
-                        _saveExpense(
-                          editId: expenseToEdit?.id,
-                          payerContributions: payerContributions,
-                          participatingMembers: selectedParticipants.toList(),
+                            ],
+                          ),
                         );
-                        setState(() {});
-                      },
-                    ),
-                  ],
+                      }),
+                      const SizedBox(height: 16),
+                      const Text("Split among members:",
+                          style: TextStyle(
+                              color: AppColors.labelSecondary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      ..._units.map((u) {
+                        List<String> memberList =
+                            u.members.isEmpty ? [u.name] : u.members;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(u.name,
+                                style: const TextStyle(
+                                    color: AppColors.green,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12)),
+                            ...memberList.map((m) {
+                              bool isSelected =
+                                  selectedParticipants.contains(m);
+                              return CheckboxListTile(
+                                title: Text(m,
+                                    style: const TextStyle(fontSize: 14)),
+                                value: isSelected,
+                                activeColor: AppColors.green,
+                                checkColor: Colors.black,
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                onChanged: (bool? value) {
+                                  setStateModal(() {
+                                    if (value == true) {
+                                      selectedParticipants.add(m);
+                                    } else {
+                                      selectedParticipants.remove(m);
+                                    }
+                                  });
+                                },
+                              );
+                            }),
+                          ],
+                        );
+                      }),
+                      const SizedBox(height: 22),
+                      ReusableButton(
+                        label: expenseToEdit == null
+                            ? "Save Expense"
+                            : "Update Expense",
+                        icon: CupertinoIcons.check_mark,
+                        onPressed: () {
+                          _saveExpense(
+                            editId: expenseToEdit?.id,
+                            payerContributions: payerContributions,
+                            participatingMembers: selectedParticipants.toList(),
+                            setStateModal: setStateModal,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1010,7 +1166,12 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                 title: const Text("Export as PDF Report"),
                 onTap: () {
                   Navigator.pop(context);
-                  ExpenseExportService.exportPdf(settlements: settlements);
+                  ExpenseExportService.exportPdf(
+                    settlements: settlements,
+                    units: _units,
+                    expenses: _expenses,
+                    currencySymbol: _selectedCurrency.symbol,
+                  );
                 },
               ),
               ListTile(
@@ -1205,24 +1366,16 @@ class _SummaryHeroCard extends StatelessWidget {
 class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
   final String title;
   final double topPadding;
-  final String selectedCurrencySymbol;
-  final VoidCallback onCurrencyTap;
-  final VoidCallback onHistoryTap;
-  final VoidCallback onGuideTap;
 
   _CollapsingHeaderDelegate({
     required this.title,
     required this.topPadding,
-    required this.selectedCurrencySymbol,
-    required this.onCurrencyTap,
-    required this.onHistoryTap,
-    required this.onGuideTap,
   });
 
   @override
   double get minExtent => 52.0 + topPadding;
   @override
-  double get maxExtent => 118.0 + topPadding;
+  double get maxExtent => 110.0 + topPadding;
 
   @override
   Widget build(
@@ -1245,55 +1398,6 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
           child: Stack(
             children: [
               Positioned(
-                right: 12,
-                top: 8,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    InkWell(
-                      onTap: onCurrencyTap,
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.green.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                              color: AppColors.green.withOpacity(0.4),
-                              width: 1),
-                        ),
-                        child: Row(
-                          children: [
-                            Text(selectedCurrencySymbol,
-                                style: const TextStyle(
-                                    color: AppColors.green,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13)),
-                            const SizedBox(width: 4),
-                            const Icon(CupertinoIcons.chevron_down,
-                                size: 12, color: AppColors.green),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    IconButton(
-                      icon: const Icon(CupertinoIcons.time,
-                          color: AppColors.green),
-                      onPressed: onHistoryTap,
-                      tooltip: "View Saved Splits",
-                    ),
-                    IconButton(
-                      icon: const Icon(CupertinoIcons.question_circle,
-                          color: AppColors.green),
-                      onPressed: onGuideTap,
-                      tooltip: "User Guide",
-                    ),
-                  ],
-                ),
-              ),
-              Positioned(
                 left: 20,
                 right: 20,
                 bottom: 16,
@@ -1301,7 +1405,7 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
                   title,
                   style: TextStyle(
                     color: AppColors.labelPrimary,
-                    fontSize: 32 - (progress * 15),
+                    fontSize: 32 - (progress * 14),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
