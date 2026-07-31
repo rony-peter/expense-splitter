@@ -1,5 +1,6 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart'; // Import printing package
 import '../models/expense_models.dart';
 
 class ExpenseExportService {
@@ -24,7 +25,7 @@ class ExpenseExportService {
             ),
             pw.SizedBox(height: 10),
 
-            // Section 1: Units & Members (Who Attended/Participated)
+            // Section 1: Units & Members
             pw.Text("Registered Units & Members",
                 style:
                     pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
@@ -41,7 +42,7 @@ class ExpenseExportService {
             }),
             pw.SizedBox(height: 16),
 
-            // Section 2: Detailed Expenses (Who Paid & Split Details)
+            // Section 2: Detailed Expenses
             pw.Text("Expenses Breakdown",
                 style:
                     pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
@@ -103,12 +104,16 @@ class ExpenseExportService {
       ),
     );
 
-    // TODO: Implement saving or sharing your pdfDoc bytes
+    // Use Printing share/layout functionality to display native print/share sheet on mobile
+    await Printing.sharePdf(
+      bytes: await pdfDoc.save(),
+      filename: 'expense_report_${DateTime.now().millisecondsSinceEpoch}.pdf',
+    );
   }
 
   static Future<void> exportDocument({
     required List<SettlementTransfer> settlements,
   }) async {
-    // Existing document export logic if applicable
+    // Document export logic if applicable
   }
 }
