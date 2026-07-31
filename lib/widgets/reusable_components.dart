@@ -37,19 +37,21 @@ class _PressableScaleState extends State<PressableScale> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _pressed ? widget.scaleAmount : 1.0,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
-        child: AnimatedOpacity(
-          opacity: _pressed ? 0.85 : 1.0,
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _pressed ? widget.scaleAmount : 1.0,
           duration: const Duration(milliseconds: 120),
-          child: widget.child,
+          curve: Curves.easeOut,
+          child: AnimatedOpacity(
+            opacity: _pressed ? 0.85 : 1.0,
+            duration: const Duration(milliseconds: 120),
+            child: widget.child,
+          ),
         ),
       ),
     );
@@ -86,51 +88,45 @@ class ReusableButton extends StatelessWidget {
         HapticFeedback.mediumImpact();
         onPressed();
       },
-      child: ClipRRect(
-        borderRadius: radius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-          child: Container(
-            width: expand ? double.infinity : null,
-            padding: padding ??
-                const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
-            decoration: BoxDecoration(
-              borderRadius: radius,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [color.withOpacity(0.92), color.withOpacity(0.78)],
-              ),
-              border: Border.all(
-                color: AppColors.labelPrimary.withOpacity(0.10),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withOpacity(0.30),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-              children: [
-                Icon(icon, color: foreground, size: 19),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: foreground,
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-              ],
-            ),
+      child: Container(
+        width: expand ? double.infinity : null,
+        padding:
+            padding ?? const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [color.withOpacity(0.92), color.withOpacity(0.78)],
           ),
+          border: Border.all(
+            color: AppColors.labelPrimary.withOpacity(0.10),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.30),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+          children: [
+            Icon(icon, color: foreground, size: 19),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 15.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -203,45 +199,47 @@ class ReusableGlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = borderRadius ?? BorderRadius.circular(20);
-    return Container(
-      margin: margin,
-      decoration: BoxDecoration(
-        borderRadius: radius,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: radius,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withOpacity(0.10),
-                  Colors.white.withOpacity(0.03),
-                ],
-              ),
-              border: Border.all(
-                color: borderColor ?? Colors.white.withOpacity(0.14),
-                width: 1,
-              ),
+    return RepaintBoundary(
+      child: Container(
+        margin: margin,
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
             ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onTap,
-                splashColor: Colors.transparent,
-                highlightColor: AppColors.labelPrimary.withOpacity(0.03),
-                child: Padding(padding: padding, child: child),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: radius,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withOpacity(0.10),
+                    Colors.white.withOpacity(0.03),
+                  ],
+                ),
+                border: Border.all(
+                  color: borderColor ?? Colors.white.withOpacity(0.14),
+                  width: 1,
+                ),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTap,
+                  splashColor: Colors.transparent,
+                  highlightColor: AppColors.labelPrimary.withOpacity(0.03),
+                  child: Padding(padding: padding, child: child),
+                ),
               ),
             ),
           ),
@@ -295,7 +293,7 @@ class ReusableBlurredSheet extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),

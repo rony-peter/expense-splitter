@@ -11,6 +11,11 @@ import 'widgets/footer.dart';
 import 'pages/guide_page.dart';
 
 void main() {
+  // Prevents google_fonts from attempting a network fetch for DM Sans on
+  // first launch. If the font isn't bundled as an asset, text just falls
+  // back to the system font instead of the app stalling on a slow/offline
+  // connection — trades a possible font mismatch for guaranteed smooth startup.
+  GoogleFonts.config.allowRuntimeFetching = false;
   runApp(const ExpenseSplitterApp());
 }
 
@@ -86,6 +91,15 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
   final TextEditingController _expenseTitleController = TextEditingController();
   final TextEditingController _expenseAmountController =
       TextEditingController();
+
+  @override
+  void dispose() {
+    _unitNameController.dispose();
+    _membersController.dispose();
+    _expenseTitleController.dispose();
+    _expenseAmountController.dispose();
+    super.dispose();
+  }
 
   void _showTopSnackBar(String message, {bool isError = true}) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -900,6 +914,21 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       }
     }
 
+    // Created once per sheet-open (not once per rebuild) — previously a
+    // fresh TextEditingController was built for every unit on every
+    // keystroke in the amount field (since that field's onChanged calls
+    // setStateModal, rebuilding this whole sheet), which discarded cursor
+    // position/focus and generated garbage on every character typed.
+    final Map<String, TextEditingController> payerControllers = {
+      for (var u in _units)
+        u.id: TextEditingController(
+          text: payerContributions[u.id] == null ||
+                  payerContributions[u.id] == 0.0
+              ? ''
+              : payerContributions[u.id].toString(),
+        ),
+    };
+
     Set<String> selectedParticipants = {};
     if (expenseToEdit != null) {
       selectedParticipants = Set.from(expenseToEdit.participatingMemberNames);
@@ -1015,12 +1044,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                               fontWeight: FontWeight.w600)),
                       const SizedBox(height: 8),
                       ..._units.map((u) {
-                        final ctrl = TextEditingController(
-                          text: payerContributions[u.id] == null ||
-                                  payerContributions[u.id] == 0.0
-                              ? ''
-                              : payerContributions[u.id].toString(),
-                        );
+                        final ctrl = payerControllers[u.id]!;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8.0),
                           child: Row(
@@ -1136,7 +1160,11 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
           );
         },
       ),
-    );
+    ).whenComplete(() {
+      for (final c in payerControllers.values) {
+        c.dispose();
+      }
+    });
   }
 
   void _showExportBottomSheet(
@@ -1385,7 +1413,7 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
 
     return ClipRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18 * progress, sigmaY: 18 * progress),
+        filter: ImageFilter.blur(sigmaX: 10 * progress, sigmaY: 10 * progress),
         child: Container(
           padding: EdgeInsets.only(top: topPadding),
           decoration: BoxDecoration(
@@ -1418,5 +1446,6 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 
   @override
-  bool shouldRebuild(covariant _CollapsingHeaderDelegate oldDelegate) => true;
+  bool shouldRebuild(covariant _CollapsingHeaderDelegate oldDelegate) =>
+      oldDelegate.title != title || oldDelegate.topPadding != topPadding;
 }
