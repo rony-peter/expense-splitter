@@ -111,6 +111,7 @@ class SavedSplitSession {
   final List<FamilyUnit> units;
   final List<ExpenseEntry> expenses;
   final List<SettlementTransfer> settlements;
+  final String? aiSummary; // Added field
 
   SavedSplitSession({
     required this.id,
@@ -119,6 +120,7 @@ class SavedSplitSession {
     required this.units,
     required this.expenses,
     required this.settlements,
+    this.aiSummary,
   });
 
   Map<String, dynamic> toJson() => {
@@ -128,6 +130,7 @@ class SavedSplitSession {
         'units': units.map((u) => u.toJson()).toList(),
         'expenses': expenses.map((e) => e.toJson()).toList(),
         'settlements': settlements.map((s) => s.toJson()).toList(),
+        'aiSummary': aiSummary,
       };
 
   factory SavedSplitSession.fromJson(Map<String, dynamic> json) =>
@@ -143,5 +146,6 @@ class SavedSplitSession {
         settlements: (json['settlements'] as List)
             .map((s) => SettlementTransfer.fromJson(s))
             .toList(),
+        aiSummary: json['aiSummary'],
       );
 }

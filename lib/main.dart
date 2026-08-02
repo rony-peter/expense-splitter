@@ -1,20 +1,21 @@
 import 'dart:ui';
+// import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'models/expense_models.dart';
 import 'services/export_service.dart';
 import 'services/storage_service.dart';
 import 'widgets/reusable_components.dart';
 import 'widgets/footer.dart';
 import 'pages/guide_page.dart';
+import 'pages/currency_converter_page.dart';
+// import 'package:http/http.dart' as http;
+// import 'dart:convert';
 
 void main() {
-  // Prevents google_fonts from attempting a network fetch for DM Sans on
-  // first launch. If the font isn't bundled as an asset, text just falls
-  // back to the system font instead of the app stalling on a slow/offline
-  // connection — trades a possible font mismatch for guaranteed smooth startup.
   GoogleFonts.config.allowRuntimeFetching = false;
   runApp(const ExpenseSplitterApp());
 }
@@ -92,6 +93,9 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
   final TextEditingController _expenseAmountController =
       TextEditingController();
 
+  String? _latestAiSummary;
+  bool _isGeneratingAi = false;
+
   @override
   void dispose() {
     _unitNameController.dispose();
@@ -105,7 +109,11 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Text(
+          message,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+        ),
         backgroundColor: isError ? AppColors.redAccent : AppColors.green,
         behavior: SnackBarBehavior.floating,
         margin: EdgeInsets.only(
@@ -118,6 +126,89 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       ),
     );
   }
+
+  /* 
+  Future<void> _generateAiSummary(List<SettlementTransfer> settlements) async {
+    try {
+      final connectivityResult = await (Connectivity().checkConnectivity());
+      if (connectivityResult.contains(ConnectivityResult.none)) {
+        _showTopSnackBar(
+            "No internet connection. Please switch on your network.");
+        return;
+      }
+    } catch (_) {
+      _showTopSnackBar(
+          "No internet connection. Please switch on your network.");
+      return;
+    }
+
+    setState(() => _isGeneratingAi = true);
+    HapticFeedback.lightImpact();
+
+    try {
+      const apiKey = String.fromEnvironment('GEMINI_API_KEY');
+
+      if (apiKey.isEmpty) {
+        _showTopSnackBar(
+          "No Gemini API key configured. Get a free one at aistudio.google.com/apikey and run with --dart-define=GEMINI_API_KEY=your_key.",
+        );
+        setState(() => _isGeneratingAi = false);
+        return;
+      }
+
+      final prompt = '''
+      Analyze this expense split dataset and provide a brief friendly summary and overview:
+      Currency: ${_selectedCurrency.symbol}
+      Units: ${_units.map((u) => '${u.name} [${u.members.join(", ")}]').join("; ")}
+      Expenses: ${_expenses.map((e) => '${e.title}: ${_selectedCurrency.symbol}${e.amount}').join("; ")}
+      Settlements: ${settlements.map((s) => '${s.from} owes ${s.to}: ${_selectedCurrency.symbol}${s.amount}').join("; ")}
+      ''';
+
+      final url = Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: jsonEncode({
+          "contents": [
+            {
+              "parts": [
+                {"text": prompt}
+              ]
+            }
+          ]
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final text = data['candidates'][0]['content']['parts'][0]['text'];
+        setState(() {
+          _latestAiSummary = text ?? 'Could not generate summary.';
+        });
+        _showTopSnackBar("AI Summary generated successfully!", isError: false);
+      } else {
+        String message = 'Request failed (${response.statusCode}).';
+        try {
+          final data = jsonDecode(response.body);
+          final apiMessage = data['error']?['message'];
+          if (apiMessage is String && apiMessage.isNotEmpty) {
+            message = apiMessage;
+          }
+        } catch (_) {}
+        throw Exception(message);
+      }
+    } catch (e) {
+      _showTopSnackBar("Failed to generate summary: ${e.toString()}");
+    } finally {
+      setState(() => _isGeneratingAi = false);
+    }
+  }
+  */
 
   void _saveUnit({String? editId}) {
     if (!(_unitFormKey.currentState?.validate() ?? false)) return;
@@ -321,6 +412,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       units: List.from(_units),
       expenses: List.from(_expenses),
       settlements: settlements,
+      aiSummary: _latestAiSummary,
     );
     await ExpenseStorageService.saveSession(session);
     _showTopSnackBar("Split session successfully saved to phone storage!",
@@ -732,6 +824,18 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                             ),
                       if (settlements.isNotEmpty) ...[
                         const SizedBox(height: 28),
+                        // ReusableButton(
+                        //   label: _isGeneratingAi
+                        //       ? "Summarizing..."
+                        //       : "Summarize with Gemini AI",
+                        //   icon: CupertinoIcons.sparkles,
+                        //   color: AppColors.secondaryBg,
+                        //   foreground: AppColors.green,
+                        //   onPressed: _isGeneratingAi
+                        //       ? () {}
+                        //       : () => _generateAiSummary(settlements),
+                        // ),
+                        // const SizedBox(height: 12),
                         ReusableButton(
                           label: "Save Split Session to Phone",
                           icon: CupertinoIcons.floppy_disk,
@@ -756,12 +860,19 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
             ],
           ),
           Positioned(
-            left: 20,
-            right: 20,
+            left: 16,
+            right: 16,
             bottom: 24,
             child: FloatingGlassFooter(
               selectedCurrencySymbol: _selectedCurrency.symbol,
-              onCurrencyTap: _showCurrencyPicker,
+              onCurrencyTap: () => _showCurrencyPicker(),
+              onConverterTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const CurrencyConverterPage()),
+                );
+              },
               onHistoryTap: () {
                 Navigator.push(
                   context,
@@ -914,11 +1025,6 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       }
     }
 
-    // Created once per sheet-open (not once per rebuild) — previously a
-    // fresh TextEditingController was built for every unit on every
-    // keystroke in the amount field (since that field's onChanged calls
-    // setStateModal, rebuilding this whole sheet), which discarded cursor
-    // position/focus and generated garbage on every character typed.
     final Map<String, TextEditingController> payerControllers = {
       for (var u in _units)
         u.id: TextEditingController(
@@ -1300,6 +1406,34 @@ class _SavedSessionsPageState extends State<SavedSessionsPage> {
                         "Units: ${session.units.length} | Transfers: ${session.settlements.length}",
                         style: const TextStyle(
                             color: AppColors.labelSecondary, fontSize: 13)),
+                    if (session.aiSummary != null &&
+                        session.aiSummary!.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.green.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: AppColors.green.withOpacity(0.2)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("AI Summary Insight:",
+                                style: TextStyle(
+                                    color: AppColors.green,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12)),
+                            const SizedBox(height: 4),
+                            Text(session.aiSummary!,
+                                style: const TextStyle(
+                                    color: AppColors.labelSecondary,
+                                    fontSize: 12.5)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               );
