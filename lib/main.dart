@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import 'models/expense_models.dart';
 import 'services/ai_service.dart';
 import 'services/export_service.dart';
@@ -172,6 +174,10 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
 
       _showTopSnackBar("AI Summary generated and session updated!",
           isError: false);
+    } on SocketException catch (_) {
+      _showTopSnackBar("No internet access. Please turn on the internet.");
+    } on http.ClientException catch (_) {
+      _showTopSnackBar("No internet access. Please turn on the internet.");
     } catch (e) {
       _showTopSnackBar("Failed to generate summary: ${e.toString()}");
     } finally {
