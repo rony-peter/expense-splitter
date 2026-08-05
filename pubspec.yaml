@@ -43,6 +43,7 @@ dependencies:
   google_generative_ai: ^0.4.6
   connectivity_plus: ^6.0.0
   http: ^1.2.0
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -69,6 +70,7 @@ flutter:
 
   # Asset section configured for your custom app icon
   assets:
+    - .env
     - assets/icon/app_icon.png
   #   - images/a_dot_ham.jpeg
 

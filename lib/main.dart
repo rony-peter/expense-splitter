@@ -1,21 +1,22 @@
 import 'dart:ui';
-// import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'models/expense_models.dart';
+import 'services/ai_service.dart';
 import 'services/export_service.dart';
 import 'services/storage_service.dart';
 import 'widgets/reusable_components.dart';
 import 'widgets/footer.dart';
 import 'pages/guide_page.dart';
 import 'pages/currency_converter_page.dart';
-// import 'package:http/http.dart' as http;
-// import 'dart:convert';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   GoogleFonts.config.allowRuntimeFetching = false;
   runApp(const ExpenseSplitterApp());
 }
@@ -95,6 +96,8 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
 
   String? _latestAiSummary;
   bool _isGeneratingAi = false;
+  bool _isDataSaved = false;
+  String? _currentSessionId;
 
   @override
   void dispose() {
@@ -103,6 +106,14 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
     _expenseTitleController.dispose();
     _expenseAmountController.dispose();
     super.dispose();
+  }
+
+  void _markDataChanged() {
+    if (_isDataSaved) {
+      setState(() {
+        _isDataSaved = false;
+      });
+    }
   }
 
   void _showTopSnackBar(String message, {bool isError = true}) {
@@ -127,88 +138,46 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
     );
   }
 
-  /* 
   Future<void> _generateAiSummary(List<SettlementTransfer> settlements) async {
-    try {
-      final connectivityResult = await (Connectivity().checkConnectivity());
-      if (connectivityResult.contains(ConnectivityResult.none)) {
-        _showTopSnackBar(
-            "No internet connection. Please switch on your network.");
-        return;
-      }
-    } catch (_) {
-      _showTopSnackBar(
-          "No internet connection. Please switch on your network.");
-      return;
-    }
-
     setState(() => _isGeneratingAi = true);
     HapticFeedback.lightImpact();
 
     try {
-      const apiKey = String.fromEnvironment('GEMINI_API_KEY');
-
-      if (apiKey.isEmpty) {
-        _showTopSnackBar(
-          "No Gemini API key configured. Get a free one at aistudio.google.com/apikey and run with --dart-define=GEMINI_API_KEY=your_key.",
-        );
-        setState(() => _isGeneratingAi = false);
-        return;
-      }
-
-      final prompt = '''
-      Analyze this expense split dataset and provide a brief friendly summary and overview:
-      Currency: ${_selectedCurrency.symbol}
-      Units: ${_units.map((u) => '${u.name} [${u.members.join(", ")}]').join("; ")}
-      Expenses: ${_expenses.map((e) => '${e.title}: ${_selectedCurrency.symbol}${e.amount}').join("; ")}
-      Settlements: ${settlements.map((s) => '${s.from} owes ${s.to}: ${_selectedCurrency.symbol}${s.amount}').join("; ")}
-      ''';
-
-      final url = Uri.parse(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent');
-
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: jsonEncode({
-          "contents": [
-            {
-              "parts": [
-                {"text": prompt}
-              ]
-            }
-          ]
-        }),
+      final summary = await AIService.summarizeBudget(
+        units: _units,
+        expenses: _expenses,
+        settlements: settlements,
+        currencySymbol: _selectedCurrency.symbol,
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final text = data['candidates'][0]['content']['parts'][0]['text'];
-        setState(() {
-          _latestAiSummary = text ?? 'Could not generate summary.';
-        });
-        _showTopSnackBar("AI Summary generated successfully!", isError: false);
-      } else {
-        String message = 'Request failed (${response.statusCode}).';
-        try {
-          final data = jsonDecode(response.body);
-          final apiMessage = data['error']?['message'];
-          if (apiMessage is String && apiMessage.isNotEmpty) {
-            message = apiMessage;
-          }
-        } catch (_) {}
-        throw Exception(message);
-      }
+      setState(() {
+        _latestAiSummary = summary;
+      });
+
+      _currentSessionId ??= DateTime.now().millisecondsSinceEpoch.toString();
+      final session = SavedSplitSession(
+        id: _currentSessionId!,
+        dateString: DateTime.now().toString().substring(0, 16),
+        totalPool: _totalPool,
+        units: List.from(_units),
+        expenses: List.from(_expenses),
+        settlements: settlements,
+        aiSummary: _latestAiSummary,
+      );
+      await ExpenseStorageService.saveSession(session);
+
+      setState(() {
+        _isDataSaved = true;
+      });
+
+      _showTopSnackBar("AI Summary generated and session updated!",
+          isError: false);
     } catch (e) {
       _showTopSnackBar("Failed to generate summary: ${e.toString()}");
     } finally {
       setState(() => _isGeneratingAi = false);
     }
   }
-  */
 
   void _saveUnit({String? editId}) {
     if (!(_unitFormKey.currentState?.validate() ?? false)) return;
@@ -244,6 +213,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       _unitNameController.clear();
       _membersController.clear();
     });
+    _markDataChanged();
     Navigator.pop(context);
   }
 
@@ -312,6 +282,7 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       _expenseTitleController.clear();
       _expenseAmountController.clear();
     });
+    _markDataChanged();
     Navigator.pop(context);
   }
 
@@ -405,8 +376,11 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
   Future<void> _completeAndSaveSession(
       List<SettlementTransfer> settlements) async {
     if (_units.isEmpty || settlements.isEmpty) return;
+
+    _currentSessionId ??= DateTime.now().millisecondsSinceEpoch.toString();
+
     final session = SavedSplitSession(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: _currentSessionId!,
       dateString: DateTime.now().toString().substring(0, 16),
       totalPool: _totalPool,
       units: List.from(_units),
@@ -415,8 +389,54 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
       aiSummary: _latestAiSummary,
     );
     await ExpenseStorageService.saveSession(session);
-    _showTopSnackBar("Split session successfully saved to phone storage!",
+
+    setState(() {
+      _isDataSaved = true;
+    });
+
+    _showTopSnackBar("Split session successfully saved/updated on phone!",
         isError: false);
+  }
+
+  void _confirmClearAll() {
+    HapticFeedback.mediumImpact();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.secondaryBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Remove Everything?",
+            style: TextStyle(
+                color: AppColors.labelPrimary, fontWeight: FontWeight.w700)),
+        content: const Text(
+          "This permanently deletes all units, expenses, and settlements in this session. This can't be undone.",
+          style: TextStyle(color: AppColors.labelSecondary, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel",
+                style: TextStyle(color: AppColors.labelSecondary)),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _units.clear();
+                _expenses.clear();
+                _latestAiSummary = null;
+                _currentSessionId = null;
+                _isDataSaved = false;
+              });
+              Navigator.pop(ctx);
+              _showTopSnackBar("Everything has been removed.", isError: false);
+            },
+            child: const Text("Remove Everything",
+                style: TextStyle(
+                    color: AppColors.redAccent, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showCurrencyPicker() {
@@ -534,7 +554,11 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                             child: ReusableButton(
                               label: "Add Unit",
                               icon: CupertinoIcons.person_add_solid,
-                              onPressed: () => _showAddOrEditUnitSheet(context),
+                              onPressed: () {
+                                if (!_isGeneratingAi) {
+                                  _showAddOrEditUnitSheet(context);
+                                }
+                              },
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -545,12 +569,14 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                               color: AppColors.tertiaryBg,
                               foreground: Colors.white,
                               onPressed: () {
-                                if (_units.isEmpty) {
-                                  _showTopSnackBar(
-                                      "Please add at least one unit before logging expenses.");
-                                  return;
+                                if (!_isGeneratingAi) {
+                                  if (_units.isEmpty) {
+                                    _showTopSnackBar(
+                                        "Please add at least one unit before logging expenses.");
+                                    return;
+                                  }
+                                  _showAddOrEditExpenseSheet(context);
                                 }
-                                _showAddOrEditExpenseSheet(context);
                               },
                             ),
                           ),
@@ -620,26 +646,33 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                               CupertinoIcons.pencil,
                                               size: 16,
                                               color: AppColors.labelSecondary),
-                                          onPressed: () =>
-                                              _showAddOrEditUnitSheet(context,
+                                          onPressed: _isGeneratingAi
+                                              ? null
+                                              : () => _showAddOrEditUnitSheet(
+                                                  context,
                                                   unitToEdit: u),
                                         ),
                                         IconButton(
                                           icon: const Icon(CupertinoIcons.trash,
                                               size: 16,
                                               color: AppColors.redAccent),
-                                          onPressed: () {
-                                            setState(() {
-                                              _units.removeWhere(
-                                                  (item) => item.id == u.id);
-                                              for (var e in _expenses) {
-                                                e.payers.removeWhere(
-                                                    (p) => p.familyId == u.id);
-                                              }
-                                              _expenses.removeWhere(
-                                                  (e) => e.payers.isEmpty);
-                                            });
-                                          },
+                                          onPressed: _isGeneratingAi
+                                              ? null
+                                              : () {
+                                                  setState(() {
+                                                    _units.removeWhere((item) =>
+                                                        item.id == u.id);
+                                                    for (var e in _expenses) {
+                                                      e.payers.removeWhere(
+                                                          (p) =>
+                                                              p.familyId ==
+                                                              u.id);
+                                                    }
+                                                    _expenses.removeWhere((e) =>
+                                                        e.payers.isEmpty);
+                                                  });
+                                                  _markDataChanged();
+                                                },
                                         ),
                                       ],
                                     ),
@@ -713,21 +746,27 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                                               CupertinoIcons.pencil,
                                               size: 16,
                                               color: AppColors.labelSecondary),
-                                          onPressed: () =>
-                                              _showAddOrEditExpenseSheet(
-                                                  context,
-                                                  expenseToEdit: e),
+                                          onPressed: _isGeneratingAi
+                                              ? null
+                                              : () =>
+                                                  _showAddOrEditExpenseSheet(
+                                                      context,
+                                                      expenseToEdit: e),
                                         ),
                                         IconButton(
                                           icon: const Icon(CupertinoIcons.trash,
                                               size: 16,
                                               color: AppColors.redAccent),
-                                          onPressed: () {
-                                            setState(() {
-                                              _expenses.removeWhere(
-                                                  (item) => item.id == e.id);
-                                            });
-                                          },
+                                          onPressed: _isGeneratingAi
+                                              ? null
+                                              : () {
+                                                  setState(() {
+                                                    _expenses.removeWhere(
+                                                        (item) =>
+                                                            item.id == e.id);
+                                                  });
+                                                  _markDataChanged();
+                                                },
                                         ),
                                       ],
                                     ),
@@ -824,33 +863,70 @@ class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
                             ),
                       if (settlements.isNotEmpty) ...[
                         const SizedBox(height: 28),
-                        // ReusableButton(
-                        //   label: _isGeneratingAi
-                        //       ? "Summarizing..."
-                        //       : "Summarize with Gemini AI",
-                        //   icon: CupertinoIcons.sparkles,
-                        //   color: AppColors.secondaryBg,
-                        //   foreground: AppColors.green,
-                        //   onPressed: _isGeneratingAi
-                        //       ? () {}
-                        //       : () => _generateAiSummary(settlements),
-                        // ),
-                        // const SizedBox(height: 12),
-                        ReusableButton(
-                          label: "Save Split Session to Phone",
-                          icon: CupertinoIcons.floppy_disk,
-                          color: AppColors.green,
-                          foreground: Colors.black,
-                          onPressed: () => _completeAndSaveSession(settlements),
+                        Column(
+                          children: [
+                            ReusableButton(
+                              label: _isGeneratingAi
+                                  ? "Summarizing..."
+                                  : (_isDataSaved && _latestAiSummary != null
+                                      ? "AI Summary Up to Date"
+                                      : "Summarize with Gemini AI"),
+                              icon: CupertinoIcons.sparkles,
+                              iconOnly: false,
+                              color: AppColors.secondaryBg,
+                              foreground: AppColors.green,
+                              onPressed: (_isGeneratingAi ||
+                                      (_isDataSaved &&
+                                          _latestAiSummary != null))
+                                  ? () {}
+                                  : () {
+                                      _generateAiSummary(settlements);
+                                    },
+                            ),
+                            const SizedBox(height: 12),
+                            ReusableButton(
+                              label: _isDataSaved
+                                  ? "Saved to Phone"
+                                  : "Save Split Session to Phone",
+                              icon: CupertinoIcons.floppy_disk,
+                              iconOnly: false,
+                              color: AppColors.green,
+                              foreground: Colors.black,
+                              onPressed: (_isGeneratingAi || _isDataSaved)
+                                  ? () {}
+                                  : () {
+                                      _completeAndSaveSession(settlements);
+                                    },
+                            ),
+                            const SizedBox(height: 12),
+                            ReusableButton(
+                              label: "Export Settlement Report",
+                              icon: CupertinoIcons.square_arrow_up_fill,
+                              iconOnly: false,
+                              color: AppColors.tertiaryBg,
+                              foreground: AppColors.labelPrimary,
+                              onPressed: () {
+                                if (!_isGeneratingAi) {
+                                  _showExportBottomSheet(context, settlements);
+                                }
+                              },
+                            ),
+                          ],
                         ),
+                      ],
+                      if (_units.isNotEmpty || _expenses.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         ReusableButton(
-                          label: "Export Settlement Report",
-                          icon: CupertinoIcons.square_arrow_up_fill,
-                          color: AppColors.tertiaryBg,
-                          foreground: AppColors.labelPrimary,
-                          onPressed: () =>
-                              _showExportBottomSheet(context, settlements),
+                          label: "Remove Everything",
+                          icon: CupertinoIcons.trash,
+                          iconOnly: false,
+                          color: AppColors.redAccent,
+                          foreground: Colors.white,
+                          onPressed: () {
+                            if (!_isGeneratingAi) {
+                              _confirmClearAll();
+                            }
+                          },
                         ),
                       ],
                     ],
@@ -1333,7 +1409,8 @@ class SavedSessionsPage extends StatefulWidget {
 }
 
 class _SavedSessionsPageState extends State<SavedSessionsPage> {
-  late Future<List<SavedSplitSession>> _futureSessions;
+  List<SavedSplitSession> _sessions = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -1341,10 +1418,17 @@ class _SavedSessionsPageState extends State<SavedSessionsPage> {
     _loadSessions();
   }
 
-  void _loadSessions() {
+  Future<void> _loadSessions() async {
+    final sessions = await ExpenseStorageService.getSavedSessions();
     setState(() {
-      _futureSessions = ExpenseStorageService.getSavedSessions();
+      _sessions = sessions;
+      _isLoading = false;
     });
+  }
+
+  Future<void> _deleteSession(String id) async {
+    await ExpenseStorageService.deleteSession(id);
+    await _loadSessions();
   }
 
   @override
@@ -1352,94 +1436,144 @@ class _SavedSessionsPageState extends State<SavedSessionsPage> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
-        title: const Text("Saved Split Sessions"),
+        title: const Text("Saved Split Sessions",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.back, color: AppColors.labelPrimary),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: FutureBuilder<List<SavedSplitSession>>(
-        future: _futureSessions,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-                child: CircularProgressIndicator(color: AppColors.green));
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(
-                child: Text("No saved split sessions found.",
-                    style: TextStyle(color: AppColors.labelTertiary)));
-          }
-          final sessions = snapshot.data!;
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: sessions.length,
-            itemBuilder: (context, index) {
-              final session = sessions[index];
-              return ReusableGlassCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(session.dateString,
-                            style: const TextStyle(
-                                color: AppColors.labelTertiary, fontSize: 12)),
-                        IconButton(
-                          icon: const Icon(CupertinoIcons.trash,
-                              color: AppColors.redAccent, size: 18),
-                          onPressed: () async {
-                            await ExpenseStorageService.deleteSession(
-                                session.id);
-                            _loadSessions();
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text("Total Pool: ₹${session.totalPool.toStringAsFixed(2)}",
-                        style: const TextStyle(
-                            color: AppColors.green,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text(
-                        "Units: ${session.units.length} | Transfers: ${session.settlements.length}",
-                        style: const TextStyle(
-                            color: AppColors.labelSecondary, fontSize: 13)),
-                    if (session.aiSummary != null &&
-                        session.aiSummary!.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.green.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                              color: AppColors.green.withOpacity(0.2)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text("AI Summary Insight:",
-                                style: TextStyle(
-                                    color: AppColors.green,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12)),
-                            const SizedBox(height: 4),
-                            Text(session.aiSummary!,
-                                style: const TextStyle(
-                                    color: AppColors.labelSecondary,
-                                    fontSize: 12.5)),
-                          ],
-                        ),
+      body: Stack(
+        children: [
+          _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.green))
+              : _sessions.isEmpty
+                  ? const Center(
+                      child: Text(
+                        "No saved split sessions found.",
+                        style: TextStyle(color: AppColors.labelTertiary),
                       ),
-                    ],
-                  ],
-                ),
-              );
-            },
-          );
-        },
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 110),
+                      itemCount: _sessions.length,
+                      itemBuilder: (context, index) {
+                        final session = _sessions[index];
+                        return ReusableGlassCard(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    session.dateString,
+                                    style: const TextStyle(
+                                      color: AppColors.labelSecondary,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                  Text(
+                                    "Pool: ₹${session.totalPool.toStringAsFixed(2)}",
+                                    style: const TextStyle(
+                                      color: AppColors.green,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                "Units: ${session.units.map((u) => u.name).join(', ')}",
+                                style: const TextStyle(
+                                  color: AppColors.labelPrimary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if (session.aiSummary != null &&
+                                  session.aiSummary!.trim().isNotEmpty) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.green.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                        color:
+                                            AppColors.green.withOpacity(0.2)),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Icon(CupertinoIcons.sparkles,
+                                          size: 16, color: AppColors.green),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          session.aiSummary!,
+                                          style: const TextStyle(
+                                            color: AppColors.labelPrimary,
+                                            fontSize: 12.5,
+                                            height: 1.3,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 10),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  onPressed: () => _deleteSession(session.id),
+                                  icon: const Icon(CupertinoIcons.trash,
+                                      size: 14, color: AppColors.redAccent),
+                                  label: const Text("Delete",
+                                      style: TextStyle(
+                                          color: AppColors.redAccent,
+                                          fontSize: 12)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 24,
+            child: FloatingGlassFooter(
+              selectedCurrencySymbol: '₹',
+              isHome: false,
+              onHomeTap: () => Navigator.pop(context),
+              onConverterTap: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const CurrencyConverterPage()),
+                );
+              },
+              isHistoryActive: true,
+              onHistoryTap: () {},
+              onGuideTap: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const GuidePage()),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

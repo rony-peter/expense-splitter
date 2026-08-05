@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../widgets/reusable_components.dart';
+import '../widgets/footer.dart';
+import '../main.dart';
+import 'guide_page.dart';
 
 class CurrencyConverterPage extends StatefulWidget {
   const CurrencyConverterPage({Key? key}) : super(key: key);
@@ -15,7 +18,6 @@ class _CurrencyConverterPageState extends State<CurrencyConverterPage> {
   String _fromCurrency = 'USD';
   String _toCurrency = 'INR';
 
-  // Static mock exchange rates relative to USD
   final Map<String, double> _rates = {
     'USD': 1.0,
     'INR': 83.0,
@@ -54,90 +56,118 @@ class _CurrencyConverterPageState extends State<CurrencyConverterPage> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            ReusableGlassCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Amount",
-                      style: TextStyle(
-                          color: AppColors.labelSecondary, fontSize: 13)),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _amountController,
-                    keyboardType: TextInputType.number,
-                    style: const TextStyle(
-                        color: AppColors.labelPrimary,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold),
-                    onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(border: InputBorder.none),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
+      body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+            child: Column(
               children: [
-                Expanded(
-                  child: ReusableGlassCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("From",
-                            style: TextStyle(
-                                color: AppColors.labelSecondary, fontSize: 12)),
-                        DropdownButton<String>(
-                          value: _fromCurrency,
-                          dropdownColor: AppColors.secondaryBg,
-                          isExpanded: true,
-                          underline: const SizedBox(),
-                          style: const TextStyle(
-                              color: AppColors.labelPrimary,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold),
-                          items: _rates.keys.map((code) {
-                            return DropdownMenuItem(
-                                value: code, child: Text(code));
-                          }).toList(),
-                          onChanged: (val) =>
-                              setState(() => _fromCurrency = val!),
-                        ),
-                      ],
-                    ),
+                ReusableGlassCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Amount",
+                          style: TextStyle(
+                              color: AppColors.labelSecondary, fontSize: 13)),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _amountController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(
+                            color: AppColors.labelPrimary,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold),
+                        onChanged: (_) => setState(() {}),
+                        decoration:
+                            const InputDecoration(border: InputBorder.none),
+                      ),
+                    ],
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Icon(CupertinoIcons.arrow_right,
-                      color: AppColors.labelSecondary),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ReusableGlassCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("From",
+                                style: TextStyle(
+                                    color: AppColors.labelSecondary,
+                                    fontSize: 12)),
+                            DropdownButton<String>(
+                              value: _fromCurrency,
+                              dropdownColor: AppColors.secondaryBg,
+                              isExpanded: true,
+                              underline: const SizedBox(),
+                              style: const TextStyle(
+                                  color: AppColors.labelPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold),
+                              items: _rates.keys.map((code) {
+                                return DropdownMenuItem(
+                                    value: code, child: Text(code));
+                              }).toList(),
+                              onChanged: (val) =>
+                                  setState(() => _fromCurrency = val!),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Icon(CupertinoIcons.arrow_right,
+                          color: AppColors.labelSecondary),
+                    ),
+                    Expanded(
+                      child: ReusableGlassCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("To",
+                                style: TextStyle(
+                                    color: AppColors.labelSecondary,
+                                    fontSize: 12)),
+                            DropdownButton<String>(
+                              value: _toCurrency,
+                              dropdownColor: AppColors.secondaryBg,
+                              isExpanded: true,
+                              underline: const SizedBox(),
+                              style: const TextStyle(
+                                  color: AppColors.labelPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold),
+                              items: _rates.keys.map((code) {
+                                return DropdownMenuItem(
+                                    value: code, child: Text(code));
+                              }).toList(),
+                              onChanged: (val) =>
+                                  setState(() => _toCurrency = val!),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: ReusableGlassCard(
+                const Spacer(),
+                ReusableGlassCard(
+                  child: SizedBox(
+                    width: double.infinity,
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text("To",
+                        const Text("Converted Amount",
                             style: TextStyle(
-                                color: AppColors.labelSecondary, fontSize: 12)),
-                        DropdownButton<String>(
-                          value: _toCurrency,
-                          dropdownColor: AppColors.secondaryBg,
-                          isExpanded: true,
-                          underline: const SizedBox(),
+                                color: AppColors.labelSecondary, fontSize: 13)),
+                        const SizedBox(height: 6),
+                        Text(
+                          "${_convertedAmount.toStringAsFixed(2)} $_toCurrency",
                           style: const TextStyle(
-                              color: AppColors.labelPrimary,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold),
-                          items: _rates.keys.map((code) {
-                            return DropdownMenuItem(
-                                value: code, child: Text(code));
-                          }).toList(),
-                          onChanged: (val) =>
-                              setState(() => _toCurrency = val!),
+                              color: AppColors.green,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w800),
                         ),
                       ],
                     ),
@@ -145,29 +175,33 @@ class _CurrencyConverterPageState extends State<CurrencyConverterPage> {
                 ),
               ],
             ),
-            const Spacer(),
-            ReusableGlassCard(
-              child: SizedBox(
-                width: double.infinity,
-                child: Column(
-                  children: [
-                    const Text("Converted Amount",
-                        style: TextStyle(
-                            color: AppColors.labelSecondary, fontSize: 13)),
-                    const SizedBox(height: 6),
-                    Text(
-                      "${_convertedAmount.toStringAsFixed(2)} $_toCurrency",
-                      style: const TextStyle(
-                          color: AppColors.green,
-                          fontSize: 32,
-                          fontWeight: FontWeight.w800),
-                    ),
-                  ],
-                ),
-              ),
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 24,
+            child: FloatingGlassFooter(
+              selectedCurrencySymbol: '₹',
+              isHome: false,
+              onHomeTap: () => Navigator.pop(context),
+              isConverterActive: true,
+              onConverterTap: () {},
+              onHistoryTap: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const SavedSessionsPage()),
+                );
+              },
+              onGuideTap: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const GuidePage()),
+                );
+              },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

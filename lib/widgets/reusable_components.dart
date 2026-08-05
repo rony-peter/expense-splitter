@@ -65,6 +65,7 @@ class ReusableButton extends StatelessWidget {
   final Color color;
   final Color foreground;
   final bool expand;
+  final bool iconOnly;
   final BorderRadius? borderRadius;
   final EdgeInsetsGeometry? padding;
 
@@ -76,6 +77,7 @@ class ReusableButton extends StatelessWidget {
     this.color = AppColors.green,
     this.foreground = Colors.black,
     this.expand = true,
+    this.iconOnly = false,
     this.borderRadius,
     this.padding,
   }) : super(key: key);
@@ -83,15 +85,18 @@ class ReusableButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = borderRadius ?? BorderRadius.circular(999);
-    return PressableScale(
+    final button = PressableScale(
       onTap: () {
         HapticFeedback.mediumImpact();
         onPressed();
       },
       child: Container(
-        width: expand ? double.infinity : null,
-        padding:
-            padding ?? const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+        width: iconOnly ? 52 : (expand ? double.infinity : null),
+        height: iconOnly ? 52 : null,
+        padding: iconOnly
+            ? EdgeInsets.zero
+            : (padding ??
+                const EdgeInsets.symmetric(vertical: 15, horizontal: 20)),
         decoration: BoxDecoration(
           borderRadius: radius,
           gradient: LinearGradient(
@@ -111,25 +116,31 @@ class ReusableButton extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-          children: [
-            Icon(icon, color: foreground, size: 19),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: foreground,
-                fontSize: 15.5,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.2,
+        child: iconOnly
+            ? Center(child: Icon(icon, color: foreground, size: 20))
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+                children: [
+                  Icon(icon, color: foreground, size: 19),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
       ),
     );
+
+    // The label still exists for icon-only buttons — just as a tooltip,
+    // so the action is still discoverable/accessible without the on-face text.
+    return iconOnly ? Tooltip(message: label, child: button) : button;
   }
 }
 

@@ -8,6 +8,17 @@ class ExpenseStorageService {
   static Future<void> saveSession(SavedSplitSession session) async {
     final prefs = await SharedPreferences.getInstance();
     final List<String> existing = prefs.getStringList(_storageKey) ?? [];
+
+    // Remove existing session with the same ID to update it instead of creating a duplicate
+    existing.removeWhere((item) {
+      try {
+        final decoded = jsonDecode(item);
+        return decoded['id'] == session.id;
+      } catch (_) {
+        return false;
+      }
+    });
+
     existing.insert(0, jsonEncode(session.toJson()));
     await prefs.setStringList(_storageKey, existing);
   }

@@ -1,15 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../models/expense_models.dart';
 
 class AIService {
-  // Get a free key at https://aistudio.google.com/apikey — it should look
-  // like "AIzaSy...". Pass it in at build/run time rather than committing
-  // a real key here:
-  //   flutter run --dart-define=GEMINI_API_KEY=your_key_here
-  static const String _apiKey = String.fromEnvironment('AQ.Ab8RN6Lckc_Fk25AaPnjzHrzgb588kqc3fMWbBwb63mIdWE_NA');
+  static String get _apiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
 
   static Future<bool> hasInternetConnection() async {
     try {
@@ -17,9 +14,8 @@ class AIService {
       if (connectivityResult.contains(ConnectivityResult.none)) {
         return false;
       }
-      final result = await InternetAddress.lookup('google.com');
-      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-    } on SocketException catch (_) {
+      return true;
+    } catch (_) {
       return false;
     }
   }
@@ -38,7 +34,7 @@ class AIService {
 
     if (_apiKey.isEmpty) {
       throw const HttpException(
-          'No Gemini API key configured. Get a free one at aistudio.google.com/apikey and run with --dart-define=GEMINI_API_KEY=your_key.');
+          'No Gemini API key configured. Add GEMINI_API_KEY to your .env file.');
     }
 
     final prompt = '''
@@ -49,10 +45,6 @@ class AIService {
     Settlements: ${settlements.map((s) => '${s.from} owes ${s.to}: $currencySymbol${s.amount}').join('; ')}
     ''';
 
-    // gemini-1.5-flash was fully shut down — all requests to it now return
-    // 404. gemini-2.5-flash is the current stable model (retiring no
-    // earlier than Oct 16, 2026; check ai.google.dev/gemini-api/docs/deprecations
-    // if this stops working later).
     final url = Uri.parse(
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent');
 
@@ -89,9 +81,7 @@ class AIService {
         if (apiMessage is String && apiMessage.isNotEmpty) {
           message = apiMessage;
         }
-      } catch (_) {
-        // Response wasn't JSON — fall back to the generic message above.
-      }
+      } catch (_) {}
       throw HttpException(message);
     }
   }
