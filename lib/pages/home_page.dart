@@ -747,6 +747,7 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
                       AnimatedOpacity(
                         duration: const Duration(milliseconds: 200),
                         opacity: (_isGeneratingAi || _isDataSaved) ? 0.4 : 1.0,
+                        
                         child: SaveSection(
                           isDataSaved: _isDataSaved,
                           isGeneratingAi: _isGeneratingAi,
