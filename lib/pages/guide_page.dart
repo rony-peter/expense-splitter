@@ -1,103 +1,56 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import '../theme/app_theme.dart';
 import '../widgets/reusable_components.dart';
-import '../widgets/footer.dart';
-import '../main.dart';
-import 'currency_converter_page.dart';
 
 class GuidePage extends StatelessWidget {
   const GuidePage({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        title: const Text(
-          "How to Use Expense Splitter",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 110),
+      children: const [
+        _GuideStepCard(
+          stepNumber: "01",
+          title: "Choose Your Currency",
+          description:
+              "Tap the currency badge in the footer anytime to instantly switch your preferred currency across the app.",
+          icon: CupertinoIcons.money_dollar_circle_fill,
         ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(CupertinoIcons.back, color: AppColors.labelPrimary),
-          onPressed: () => Navigator.pop(context),
+        SizedBox(height: 16),
+        _GuideStepCard(
+          stepNumber: "02",
+          title: "Add Units & Members",
+          description:
+              "Tap 'Add Unit' to create participating groups or individuals (e.g., 'Family' or 'Rony'). Optionally add comma-separated member names inside each unit.",
+          icon: CupertinoIcons.house_fill,
         ),
-      ),
-      body: Stack(
-        children: [
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 110),
-            children: const [
-              _GuideStepCard(
-                stepNumber: "01",
-                title: "Choose Your Currency",
-                description:
-                    "Tap the currency badge in the top-right header anytime or select from the footer to instantly switch your preferred currency across the app.",
-                icon: CupertinoIcons.money_dollar_circle_fill,
-              ),
-              SizedBox(height: 16),
-              _GuideStepCard(
-                stepNumber: "02",
-                title: "Add Units & Members",
-                description:
-                    "Tap 'Add Unit' to create participating groups or individuals (e.g., 'Family' or 'Rony'). Optionally add comma-separated member names inside each unit.",
-                icon: CupertinoIcons.house_fill,
-              ),
-              SizedBox(height: 16),
-              _GuideStepCard(
-                stepNumber: "03",
-                title: "Log & Track Expenses",
-                description:
-                    "Tap 'Add Expense' to record costs, specify payer contributions, and select which members participated in sharing each expense.",
-                icon: CupertinoIcons.doc_text_fill,
-              ),
-              SizedBox(height: 16),
-              _GuideStepCard(
-                stepNumber: "04",
-                title: "AI Summaries & Settlements",
-                description:
-                    "View instant, accurate settlement transfers on the fly. Tap 'Summarize with Gemini AI' to generate intelligent budgeting breakdowns.",
-                icon: CupertinoIcons.sparkles,
-              ),
-              SizedBox(height: 16),
-              _GuideStepCard(
-                stepNumber: "05",
-                title: "Save & Export Reports",
-                description:
-                    "Save or update sessions locally on your device history page. Export clean PDF or text reports anytime to share with your group.",
-                icon: CupertinoIcons.square_arrow_up_fill,
-              ),
-            ],
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 24,
-            child: FloatingGlassFooter(
-              selectedCurrencySymbol: '₹',
-              isHome: false,
-              onHomeTap: () => Navigator.pop(context),
-              onConverterTap: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const CurrencyConverterPage()),
-                );
-              },
-              onHistoryTap: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const SavedSessionsPage()),
-                );
-              },
-              isGuideActive: true,
-              onGuideTap: () {},
-            ),
-          ),
-        ],
-      ),
+        SizedBox(height: 16),
+        _GuideStepCard(
+          stepNumber: "03",
+          title: "Log & Track Expenses",
+          description:
+              "Tap 'Add Expense' to record costs, specify payer contributions, and select which members participated in sharing each expense.",
+          icon: CupertinoIcons.doc_text_fill,
+        ),
+        SizedBox(height: 16),
+        _GuideStepCard(
+          stepNumber: "04",
+          title: "AI Summaries & Settlements",
+          description:
+              "View instant, accurate settlement transfers on the fly. Tap 'Summarize with Gemini AI' to generate intelligent budgeting breakdowns.",
+          icon: CupertinoIcons.sparkles,
+        ),
+        SizedBox(height: 16),
+        _GuideStepCard(
+          stepNumber: "05",
+          title: "Save & Export Reports",
+          description:
+              "Save or update sessions locally on your device history page. Export clean PDF or text reports anytime to share with your group.",
+          icon: CupertinoIcons.square_arrow_up_fill,
+        ),
+      ],
     );
   }
 }

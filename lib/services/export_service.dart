@@ -1,6 +1,6 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart'; // Import printing package
+import 'package:printing/printing.dart';
 import '../models/expense_models.dart';
 
 class ExpenseExportService {
@@ -16,7 +16,6 @@ class ExpenseExportService {
       pw.MultiPage(
         build: (pw.Context context) {
           return [
-            // Title Header
             pw.Header(
               level: 0,
               child: pw.Text("Expense Splitter Report",
@@ -24,8 +23,6 @@ class ExpenseExportService {
                       fontSize: 24, fontWeight: pw.FontWeight.bold)),
             ),
             pw.SizedBox(height: 10),
-
-            // Section 1: Units & Members
             pw.Text("Registered Units & Members",
                 style:
                     pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
@@ -41,8 +38,6 @@ class ExpenseExportService {
               );
             }),
             pw.SizedBox(height: 16),
-
-            // Section 2: Detailed Expenses
             pw.Text("Expenses Breakdown",
                 style:
                     pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
@@ -85,8 +80,6 @@ class ExpenseExportService {
               );
             }),
             pw.SizedBox(height: 16),
-
-            // Section 3: Final Settlements
             pw.Text("Final Settlements",
                 style:
                     pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
@@ -104,7 +97,6 @@ class ExpenseExportService {
       ),
     );
 
-    // Use Printing share/layout functionality to display native print/share sheet on mobile
     await Printing.sharePdf(
       bytes: await pdfDoc.save(),
       filename: 'expense_report_${DateTime.now().millisecondsSinceEpoch}.pdf',
@@ -113,7 +105,5 @@ class ExpenseExportService {
 
   static Future<void> exportDocument({
     required List<SettlementTransfer> settlements,
-  }) async {
-    // Document export logic if applicable
-  }
+  }) async {}
 }

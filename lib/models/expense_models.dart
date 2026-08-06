@@ -91,8 +91,11 @@ class SettlementTransfer {
   final String to;
   final double amount;
 
-  SettlementTransfer(
-      {required this.from, required this.to, required this.amount});
+  SettlementTransfer({
+    required this.from,
+    required this.to,
+    required this.amount,
+  });
 
   Map<String, dynamic> toJson() => {'from': from, 'to': to, 'amount': amount};
 
@@ -111,7 +114,7 @@ class SavedSplitSession {
   final List<FamilyUnit> units;
   final List<ExpenseEntry> expenses;
   final List<SettlementTransfer> settlements;
-  final String? aiSummary; // Added field
+  final String? aiSummary;
 
   SavedSplitSession({
     required this.id,

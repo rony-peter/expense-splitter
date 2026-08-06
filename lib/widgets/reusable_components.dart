@@ -2,19 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
-
-class AppColors {
-  static const bg = Color(0xFF0A0A0B);
-  static const secondaryBg = Color(0xFF1C1C1E);
-  static const tertiaryBg = Color(0xFF2A2A2C);
-  static const separator = Color(0x1FFFFFFF);
-  static const labelPrimary = Colors.white;
-  static const labelSecondary = Color(0x99FFFFFF);
-  static const labelTertiary = Color(0x59FFFFFF);
-  static const green = Color(0xFFB6FF3D);
-  static const greenDeep = Color(0xFF7CD936);
-  static const redAccent = Color(0xFFFF453A);
-}
+import '../theme/app_theme.dart';
 
 class PressableScale extends StatefulWidget {
   final Widget child;
@@ -138,8 +126,6 @@ class ReusableButton extends StatelessWidget {
       ),
     );
 
-    // The label still exists for icon-only buttons — just as a tooltip,
-    // so the action is still discoverable/accessible without the on-face text.
     return iconOnly ? Tooltip(message: label, child: button) : button;
   }
 }

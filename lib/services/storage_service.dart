@@ -9,7 +9,6 @@ class ExpenseStorageService {
     final prefs = await SharedPreferences.getInstance();
     final List<String> existing = prefs.getStringList(_storageKey) ?? [];
 
-    // Remove existing session with the same ID to update it instead of creating a duplicate
     existing.removeWhere((item) {
       try {
         final decoded = jsonDecode(item);
