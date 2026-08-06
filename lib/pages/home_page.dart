@@ -396,6 +396,8 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
   Widget build(BuildContext context) {
     final settlements = _calculateSettlements();
     final topPadding = MediaQuery.of(context).padding.top;
+    final bool isAiDisabled =
+        _isGeneratingAi || (_isDataSaved && _latestAiSummary != null);
 
     return CustomScrollView(
       slivers: [
@@ -422,33 +424,41 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
                 Row(
                   children: [
                     Expanded(
-                      child: ReusableButton(
-                        label: "Add Unit",
-                        icon: CupertinoIcons.person_add_solid,
-                        onPressed: () {
-                          if (!_isGeneratingAi) {
-                            _showAddOrEditUnitSheet(context);
-                          }
-                        },
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: _isGeneratingAi ? 0.4 : 1.0,
+                        child: ReusableButton(
+                          label: "Add Unit",
+                          icon: CupertinoIcons.person_add_solid,
+                          onPressed: _isGeneratingAi
+                              ? null
+                              : () {
+                                  _showAddOrEditUnitSheet(context);
+                                },
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: ReusableButton(
-                        label: "Add Expense",
-                        icon: CupertinoIcons.doc_text_fill,
-                        color: AppColors.tertiaryBg,
-                        foreground: Colors.white,
-                        onPressed: () {
-                          if (!_isGeneratingAi) {
-                            if (_units.isEmpty) {
-                              _showTopSnackBar(
-                                  "Please add at least one unit before logging expenses.");
-                              return;
-                            }
-                            _showAddOrEditExpenseSheet(context);
-                          }
-                        },
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: _isGeneratingAi ? 0.4 : 1.0,
+                        child: ReusableButton(
+                          label: "Add Expense",
+                          icon: CupertinoIcons.doc_text_fill,
+                          color: AppColors.tertiaryBg,
+                          foreground: Colors.white,
+                          onPressed: _isGeneratingAi
+                              ? null
+                              : () {
+                                  if (_units.isEmpty) {
+                                    _showTopSnackBar(
+                                        "Please add at least one unit before logging expenses.");
+                                    return;
+                                  }
+                                  _showAddOrEditExpenseSheet(context);
+                                },
+                        ),
                       ),
                     ),
                   ],
@@ -713,60 +723,77 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
                   const SizedBox(height: 28),
                   Column(
                     children: [
-                      ReusableButton(
-                        label: _isGeneratingAi
-                            ? "Summarizing..."
-                            : (_isDataSaved && _latestAiSummary != null
-                                ? "AI Summary Up to Date"
-                                : "Summarize with Gemini AI"),
-                        icon: CupertinoIcons.sparkles,
-                        iconOnly: false,
-                        color: AppColors.secondaryBg,
-                        foreground: AppColors.green,
-                        onPressed: (_isGeneratingAi ||
-                                (_isDataSaved && _latestAiSummary != null))
-                            ? () {}
-                            : () {
-                                _generateAiSummary(settlements);
-                              },
+                      AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: isAiDisabled ? 0.4 : 1.0,
+                        child: ReusableButton(
+                          label: _isGeneratingAi
+                              ? "Summarizing..."
+                              : (_isDataSaved && _latestAiSummary != null
+                                  ? "AI Summary Up to Date"
+                                  : "Summarize with Gemini AI"),
+                          icon: CupertinoIcons.sparkles,
+                          iconOnly: false,
+                          color: AppColors.secondaryBg,
+                          foreground: AppColors.green,
+                          onPressed: isAiDisabled
+                              ? null
+                              : () {
+                                  _generateAiSummary(settlements);
+                                },
+                        ),
                       ),
                       const SizedBox(height: 12),
-                      SaveSection(
-                        isDataSaved: _isDataSaved,
-                        isGeneratingAi: _isGeneratingAi,
-                        onSave: () {
-                          _completeAndSaveSession(settlements);
-                        },
+                      AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: (_isGeneratingAi || _isDataSaved) ? 0.4 : 1.0,
+                        child: SaveSection(
+                          isDataSaved: _isDataSaved,
+                          isGeneratingAi: _isGeneratingAi,
+                          onSave: (_isGeneratingAi || _isDataSaved)
+                              ? null
+                              : () {
+                                  _completeAndSaveSession(settlements);
+                                },
+                        ),
                       ),
                       const SizedBox(height: 12),
-                      ReusableButton(
-                        label: "Export Settlement Report",
-                        icon: CupertinoIcons.square_arrow_up_fill,
-                        iconOnly: false,
-                        color: AppColors.tertiaryBg,
-                        foreground: AppColors.labelPrimary,
-                        onPressed: () {
-                          if (!_isGeneratingAi) {
-                            _showExportBottomSheet(context, settlements);
-                          }
-                        },
+                      AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: _isGeneratingAi ? 0.4 : 1.0,
+                        child: ReusableButton(
+                          label: "Export Settlement Report",
+                          icon: CupertinoIcons.square_arrow_up_fill,
+                          iconOnly: false,
+                          color: AppColors.tertiaryBg,
+                          foreground: AppColors.labelPrimary,
+                          onPressed: _isGeneratingAi
+                              ? null
+                              : () {
+                                  _showExportBottomSheet(context, settlements);
+                                },
+                        ),
                       ),
                     ],
                   ),
                 ],
                 if (_units.isNotEmpty || _expenses.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  ReusableButton(
-                    label: "Remove Everything",
-                    icon: CupertinoIcons.trash,
-                    iconOnly: false,
-                    color: AppColors.redAccent,
-                    foreground: Colors.white,
-                    onPressed: () {
-                      if (!_isGeneratingAi) {
-                        _confirmClearAll();
-                      }
-                    },
+                  AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: _isGeneratingAi ? 0.4 : 1.0,
+                    child: ReusableButton(
+                      label: "Remove Everything",
+                      icon: CupertinoIcons.trash,
+                      iconOnly: false,
+                      color: AppColors.redAccent,
+                      foreground: Colors.white,
+                      onPressed: _isGeneratingAi
+                          ? null
+                          : () {
+                              _confirmClearAll();
+                            },
+                    ),
                   ),
                 ],
               ],
@@ -824,12 +851,21 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
                         fontWeight: FontWeight.w700,
                         color: AppColors.labelPrimary,
                         letterSpacing: -0.3)),
+                const SizedBox(height: 6),
+                const Text(
+                  "A unit represents an individual, family, or subgroup sharing collective expenses.",
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.labelSecondary,
+                    height: 1.35,
+                  ),
+                ),
                 const SizedBox(height: 18),
                 TextFormField(
                   controller: _unitNameController,
                   style: const TextStyle(color: AppColors.labelPrimary),
                   decoration: InputDecoration(
-                    labelText: "Unit Name (e.g. Rony)",
+                    labelText: "Unit / Group Name",
                     labelStyle: const TextStyle(
                         color: AppColors.labelTertiary, fontSize: 14.5),
                     filled: true,
@@ -856,7 +892,14 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
                   controller: _membersController,
                   style: const TextStyle(color: AppColors.labelPrimary),
                   decoration: InputDecoration(
-                    labelText: "Members (comma separated)",
+                    labelText: "Member Names",
+                    hintText: "e.g. Alex, Sam, Taylor",
+                    hintStyle: TextStyle(
+                        color: AppColors.labelTertiary.withOpacity(0.5),
+                        fontSize: 13.5),
+                    helperText: "Separate multiple members with commas",
+                    helperStyle: const TextStyle(
+                        color: AppColors.labelTertiary, fontSize: 12),
                     labelStyle: const TextStyle(
                         color: AppColors.labelTertiary, fontSize: 14.5),
                     filled: true,

@@ -23,7 +23,7 @@ class GuidePage extends StatelessWidget {
           stepNumber: "02",
           title: "Add Units & Members",
           description:
-              "Tap 'Add Unit' to create participating groups or individuals (e.g., 'Family' or 'Rony'). Optionally add comma-separated member names inside each unit.",
+              "Tap 'Add Unit' to create participating groups or individuals (e.g., 'Family' or 'Roommates'). Optionally add comma-separated member names inside each unit.",
           icon: CupertinoIcons.house_fill,
         ),
         SizedBox(height: 16),

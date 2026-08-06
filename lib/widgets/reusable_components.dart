@@ -49,7 +49,7 @@ class _PressableScaleState extends State<PressableScale> {
 class ReusableButton extends StatelessWidget {
   final String label;
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final Color color;
   final Color foreground;
   final bool expand;
@@ -76,7 +76,7 @@ class ReusableButton extends StatelessWidget {
     final button = PressableScale(
       onTap: () {
         HapticFeedback.mediumImpact();
-        onPressed();
+        onPressed?.call();
       },
       child: Container(
         width: iconOnly ? 52 : (expand ? double.infinity : null),

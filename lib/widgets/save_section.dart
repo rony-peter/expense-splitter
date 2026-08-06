@@ -6,7 +6,7 @@ import 'reusable_components.dart';
 class SaveSection extends StatelessWidget {
   final bool isDataSaved;
   final bool isGeneratingAi;
-  final VoidCallback onSave;
+  final VoidCallback? onSave;
 
   const SaveSection({
     Key? key,
