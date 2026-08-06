@@ -1,0 +1,57 @@
+name: Build iOS Application
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      # 1. Checkout repository
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Set up Java (required for some Flutter toolings)
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 3. Set up Flutter SDK
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x' # Or specify your exact version (e.g. 3.22.x)
+          channel: 'stable'
+          cache: true
+
+      # 4. Get dependencies
+      - name: Install Dependencies
+        run: flutter pub get
+
+      # 5. Build iOS App (Unsigned IPA / Runner Bundle)
+      - name: Build iOS App
+        run: |
+          flutter build ios --release --no-codesign
+
+      # 6. Compress Build Artifacts into Zip
+      - name: Compress Runner.app
+        run: |
+          cd build/ios/iphoneos
+          mkdir Payload
+          mv Runner.app Payload/
+          zip -r Payload.zip Payload
+          mv Payload.zip Runner.ipa
+
+      # 7. Upload Build Artifact for Download
+      - name: Upload iOS IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-runner
+          path: build/ios/iphoneos/Runner.ipa
+          retention-days: 7
