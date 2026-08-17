@@ -1,15 +1,26 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'layouts/main_layout.dart';
 import 'theme/app_theme.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint("Could not load .env file: $e");
+  }
+
   GoogleFonts.config.allowRuntimeFetching = false;
-  await MobileAds.instance.initialize();
+
+  if (!kIsWeb) {
+    await MobileAds.instance.initialize();
+  }
+
   runApp(const ExpenseSplitterApp());
 }
 
