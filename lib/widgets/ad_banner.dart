@@ -1,6 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AdBannerWidget extends StatefulWidget {
   const AdBannerWidget({super.key});
@@ -21,6 +22,8 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
   }
 
   void _loadAd() {
+    // 1. Exit early on Web before initializing native AdMob channels
+    if (kIsWeb) return;
 
     if (_adUnitId.isEmpty) {
       debugPrint('AdMob Error: ADS_KEY is empty or missing in .env');
@@ -33,6 +36,7 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (ad) {
+          if (!mounted) return; // 2. Guard against updating unmounted state
           setState(() {
             _isAdLoaded = true;
           });
@@ -53,6 +57,10 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return const SizedBox.shrink();
+    }
+
     if (_isAdLoaded && _bannerAd != null) {
       return Container(
         alignment: Alignment.center,
@@ -62,7 +70,6 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
       );
     }
 
-    // Returns an empty space when ad is not loaded
     return const SizedBox.shrink();
   }
 }
