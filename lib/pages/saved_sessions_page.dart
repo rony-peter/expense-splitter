@@ -47,7 +47,7 @@ class _SavedSessionsPageState extends State<SavedSessionsPage> {
                 ),
               )
             : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 110),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 180),
                 itemCount: _sessions.length,
                 itemBuilder: (context, index) {
                   final session = _sessions[index];

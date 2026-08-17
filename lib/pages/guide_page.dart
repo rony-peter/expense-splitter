@@ -9,7 +9,7 @@ class GuidePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 110),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 180),
       children: const [
         _GuideStepCard(
           stepNumber: "01",

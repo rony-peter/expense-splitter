@@ -34,7 +34,7 @@ class _CurrencyConverterPageState extends State<CurrencyConverterPage> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 180),
       child: Column(
         children: [
           ReusableGlassCard(

@@ -8,6 +8,7 @@ import '../pages/guide_page.dart';
 import '../theme/app_theme.dart';
 import '../widgets/footer.dart';
 import '../widgets/reusable_components.dart';
+import '../widgets/ad_banner.dart';
 
 enum AppTab { home, converter, history, guide }
 
@@ -170,22 +171,29 @@ class _MainLayoutState extends State<MainLayout> {
             left: 16,
             right: 16,
             bottom: 24,
-            child: FloatingGlassFooter(
-              selectedCurrencySymbol: _selectedCurrency.symbol,
-              isHome: _currentTab == AppTab.home,
-              isConverterActive: _currentTab == AppTab.converter,
-              isHistoryActive: _currentTab == AppTab.history,
-              isGuideActive: _currentTab == AppTab.guide,
-              onCurrencyTap: _showCurrencyPicker,
-              onHomeTap: () => setState(() => _currentTab = AppTab.home),
-              onConverterTap: () =>
-                  setState(() => _currentTab = AppTab.converter),
-              onHistoryTap: () => setState(() {
-                _currentTab = AppTab.history;
-                _historyKey =
-                    UniqueKey(); // Refreshes saved history list when opened
-              }),
-              onGuideTap: () => setState(() => _currentTab = AppTab.guide),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const AdBannerWidget(),
+                const SizedBox(height: 10),
+                FloatingGlassFooter(
+                  selectedCurrencySymbol: _selectedCurrency.symbol,
+                  isHome: _currentTab == AppTab.home,
+                  isConverterActive: _currentTab == AppTab.converter,
+                  isHistoryActive: _currentTab == AppTab.history,
+                  isGuideActive: _currentTab == AppTab.guide,
+                  onCurrencyTap: _showCurrencyPicker,
+                  onHomeTap: () => setState(() => _currentTab = AppTab.home),
+                  onConverterTap: () =>
+                      setState(() => _currentTab = AppTab.converter),
+                  onHistoryTap: () => setState(() {
+                    _currentTab = AppTab.history;
+                    _historyKey =
+                        UniqueKey(); // Refreshes saved history list when opened
+                  }),
+                  onGuideTap: () => setState(() => _currentTab = AppTab.guide),
+                ),
+              ],
             ),
           ),
         ],

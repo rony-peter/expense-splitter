@@ -5,6 +5,11 @@
         android:label="Expense Splitter"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-8178416934043307~2227360002"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
