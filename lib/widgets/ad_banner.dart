@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+// import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AdBannerWidget extends StatefulWidget {
@@ -13,7 +13,8 @@ class AdBannerWidget extends StatefulWidget {
 class _AdBannerWidgetState extends State<AdBannerWidget> {
   BannerAd? _bannerAd;
   bool _isAdLoaded = false;
-  static String get _adUnitId => dotenv.env['ADS_KEY'] ?? '';
+  // static String get _adUnitId => dotenv.env['ADS_KEY'] ?? '';
+  static String get _adUnitId => 'ca-app-pub-8178416934043307/5674137658';
 
   @override
   void initState() {
