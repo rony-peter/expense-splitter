@@ -1,17 +1,14 @@
-# expense_splitter
+# Expense Splitter 💸
 
-A new Flutter project.
+Split expenses with friends, effortlessly.
 
-## Getting Started
+🔗 **Live app:** [expense-splitter-phi-liard.vercel.app](https://expense-splitter-phi-liard.vercel.app/)
 
-This project is a starting point for a Flutter application.
+## Features
+- Split bills and expenses between multiple people
+- Currency converter
+- Save and revisit past split sessions
+- Clean, simple interface
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Built with
+Flutter · Dart
