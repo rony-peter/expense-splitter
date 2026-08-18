@@ -10,7 +10,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    await dotenv.load(fileName: ".env");
+    await dotenv.load(fileName: ".env.local");
   } catch (e) {
     debugPrint("Could not load .env file: $e");
   }
