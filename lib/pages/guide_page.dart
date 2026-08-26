@@ -13,6 +13,14 @@ class GuidePage extends StatelessWidget {
       children: const [
         _GuideStepCard(
           stepNumber: "01",
+          title: "Pick a Splitting Mode",
+          description:
+              "Choose 'Single Bill' for a quick one-off split, 'Individual Multi' for tracking several bills between friends, or 'Multi-Group' for splitting between families or larger groups. Switch modes anytime from the tabs.",
+          icon: CupertinoIcons.square_grid_2x2_fill,
+        ),
+        SizedBox(height: 16),
+        _GuideStepCard(
+          stepNumber: "02",
           title: "Choose Your Currency",
           description:
               "Tap the currency badge in the footer anytime to instantly switch your preferred currency across the app.",
@@ -20,34 +28,50 @@ class GuidePage extends StatelessWidget {
         ),
         SizedBox(height: 16),
         _GuideStepCard(
-          stepNumber: "02",
-          title: "Add Units & Members",
-          description:
-              "Tap 'Add Unit' to create participating groups or individuals (e.g., 'Family' or 'Roommates'). Optionally add comma-separated member names inside each unit.",
-          icon: CupertinoIcons.house_fill,
-        ),
-        SizedBox(height: 16),
-        _GuideStepCard(
           stepNumber: "03",
-          title: "Log & Track Expenses",
+          title: "Add People or Units",
           description:
-              "Tap 'Add Expense' to record costs, specify payer contributions, and select which members participated in sharing each expense.",
-          icon: CupertinoIcons.doc_text_fill,
+              "In Individual Multi, tap 'Add Person' to bring people in. In Multi-Group, tap 'Add Unit' to create groups (e.g., 'Family' or 'Roommates') with optional comma-separated member names. You'll need at least 2 before you can start logging expenses.",
+          icon: CupertinoIcons.person_2_fill,
         ),
         SizedBox(height: 16),
         _GuideStepCard(
           stepNumber: "04",
-          title: "AI Summaries & Settlements",
+          title: "Log & Track Expenses",
           description:
-              "View instant, accurate settlement transfers on the fly. Tap 'Summarize with Gemini AI' to generate intelligent budgeting breakdowns.",
-          icon: CupertinoIcons.sparkles,
+              "Tap 'Add Expense' to record costs, specify how much each payer contributed, and select which members participated in sharing each expense.",
+          icon: CupertinoIcons.doc_text_fill,
         ),
         SizedBox(height: 16),
         _GuideStepCard(
           stepNumber: "05",
-          title: "Save & Export Reports",
+          title: "View Instant Settlements",
           description:
-              "Save or update sessions locally on your device history page. Export clean PDF or text reports anytime to share with your group.",
+              "As soon as you enter or edit an expense, settlements recalculate live — no need to leave the screen. You'll always see exactly who owes who, and how much.",
+          icon: CupertinoIcons.arrow_right_arrow_left_circle_fill,
+        ),
+        SizedBox(height: 16),
+        _GuideStepCard(
+          stepNumber: "06",
+          title: "Get an AI Summary",
+          description:
+              "Tap 'Summarize with Gemini AI' to generate a friendly, intelligent breakdown of your budget and spending patterns — powered by Google's Gemini API.",
+          icon: CupertinoIcons.sparkles,
+        ),
+        SizedBox(height: 16),
+        _GuideStepCard(
+          stepNumber: "07",
+          title: "Save Your Session",
+          description:
+              "Save or update your split session locally on your device so you can revisit it later from the history page — even without an internet connection.",
+          icon: CupertinoIcons.tray_arrow_down_fill,
+        ),
+        SizedBox(height: 16),
+        _GuideStepCard(
+          stepNumber: "08",
+          title: "Export & Share",
+          description:
+              "Export a polished PDF report or a plain-text summary anytime, and share it straight to your group chat, email, or notes app.",
           icon: CupertinoIcons.square_arrow_up_fill,
         ),
       ],
