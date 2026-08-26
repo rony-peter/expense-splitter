@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -12,6 +13,8 @@ import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/reusable_components.dart';
 import '../widgets/save_section.dart';
+
+enum ExpenseMode { single, individualMulti, batch }
 
 class ExpenseHomePage extends StatefulWidget {
   final CurrencyOption selectedCurrency;
@@ -30,6 +33,28 @@ class ExpenseHomePage extends StatefulWidget {
 }
 
 class _ExpenseHomePageState extends State<ExpenseHomePage> {
+  ExpenseMode _activeMode = ExpenseMode.single;
+
+  // Single Expense Mode Controllers
+  final GlobalKey<FormState> _singleFormKey = GlobalKey<FormState>();
+  final TextEditingController _singleTitleController = TextEditingController();
+  final TextEditingController _singleAmountController = TextEditingController();
+  final TextEditingController _singlePayerController = TextEditingController();
+  final TextEditingController _singleParticipantsController =
+      TextEditingController();
+
+  // Individual Multi-Expense Mode State & Controllers
+  final List<String> _individualPeople = [];
+  final List<ExpenseEntry> _individualExpenses = [];
+  final TextEditingController _individualPersonController =
+      TextEditingController();
+  final GlobalKey<FormState> _indExpenseFormKey = GlobalKey<FormState>();
+  final TextEditingController _indExpenseTitleController =
+      TextEditingController();
+  final TextEditingController _indExpenseAmountController =
+      TextEditingController();
+
+  // Multi-Family (Batch) Mode State
   final List<FamilyUnit> _units = [];
   final List<ExpenseEntry> _expenses = [];
 
@@ -50,6 +75,15 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
 
   @override
   void dispose() {
+    _singleTitleController.dispose();
+    _singleAmountController.dispose();
+    _singlePayerController.dispose();
+    _singleParticipantsController.dispose();
+
+    _individualPersonController.dispose();
+    _indExpenseTitleController.dispose();
+    _indExpenseAmountController.dispose();
+
     _unitNameController.dispose();
     _membersController.dispose();
     _expenseTitleController.dispose();
@@ -58,11 +92,61 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
   }
 
   void _markDataChanged() {
-    if (_isDataSaved) {
-      setState(() {
-        _isDataSaved = false;
-      });
-    }
+    setState(() {
+      _isDataSaved = false;
+      _latestAiSummary = null;
+    });
+  }
+
+  Widget _buildAddExpenseHint(String message) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(CupertinoIcons.info_circle,
+              size: 14, color: AppColors.labelTertiary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: AppColors.labelTertiary,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _clearSingleEntries() {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _singleTitleController.clear();
+      _singleAmountController.clear();
+      _singlePayerController.clear();
+      _singleParticipantsController.clear();
+      _currentSessionId = null;
+      _latestAiSummary = null;
+      _isDataSaved = false;
+    });
+    _showTopSnackBar("Single expense entries removed.", isError: false);
+  }
+
+  void _clearIndividualMultiEntries() {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _individualPeople.clear();
+      _individualExpenses.clear();
+      _currentSessionId = null;
+      _latestAiSummary = null;
+      _isDataSaved = false;
+    });
+    _showTopSnackBar("Individual multi-expense entries removed.",
+        isError: false);
   }
 
   void _showTopSnackBar(String message, {bool isError = true}) {
@@ -87,14 +171,212 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
     );
   }
 
+  // Adapter converting any mode's current state to unified units and expenses for AI & Storage
+  (List<FamilyUnit>, List<ExpenseEntry>, double) _getEffectiveData() {
+    if (_activeMode == ExpenseMode.single) {
+      final title = _singleTitleController.text.trim().isEmpty
+          ? "Single Bill Expense"
+          : _singleTitleController.text.trim();
+      final amount = double.tryParse(_singleAmountController.text) ?? 0.0;
+      final payer = _singlePayerController.text.trim();
+      final rawParticipants = _singleParticipantsController.text
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+
+      final participantsSet = rawParticipants.toSet();
+      if (payer.isNotEmpty) participantsSet.add(payer);
+      final participants = participantsSet.toList();
+
+      final dynamicUnits = participants
+          .map((p) => FamilyUnit(id: p, name: p, members: [p]))
+          .toList();
+
+      final dynamicExpenses = [
+        ExpenseEntry(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: title,
+          payers: [
+            ExpensePayerContribution(familyId: payer, amountPaid: amount)
+          ],
+          amount: amount,
+          participatingFamilyIds: participants,
+          participatingMemberNames: rawParticipants,
+        )
+      ];
+      return (dynamicUnits, dynamicExpenses, amount);
+    } else if (_activeMode == ExpenseMode.individualMulti) {
+      final dynamicUnits = _individualPeople
+          .map((p) => FamilyUnit(id: p, name: p, members: [p]))
+          .toList();
+      final totalPool =
+          _individualExpenses.fold(0.0, (sum, e) => sum + e.amount);
+      return (dynamicUnits, _individualExpenses, totalPool);
+    } else {
+      return (_units, _expenses, _totalPool);
+    }
+  }
+
+  List<SettlementTransfer> _calculateSingleSettlements() {
+    final amount = double.tryParse(_singleAmountController.text) ?? 0.0;
+    final payer = _singlePayerController.text.trim();
+    final rawParticipants = _singleParticipantsController.text
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    if (amount <= 0 || payer.isEmpty || rawParticipants.isEmpty) {
+      return [];
+    }
+
+    final participants = rawParticipants.toSet().toList();
+    final share = amount / participants.length;
+    final List<SettlementTransfer> result = [];
+
+    for (var person in participants) {
+      if (person.toLowerCase() != payer.toLowerCase()) {
+        result.add(SettlementTransfer(
+          from: person,
+          to: payer,
+          amount: share,
+        ));
+      }
+    }
+    return result;
+  }
+
+  List<SettlementTransfer> _calculateIndividualMultiSettlements() {
+    Map<String, double> netBalances = {for (var p in _individualPeople) p: 0.0};
+
+    for (var exp in _individualExpenses) {
+      for (var p in exp.payers) {
+        netBalances[p.familyId] =
+            (netBalances[p.familyId] ?? 0.0) + p.amountPaid;
+      }
+
+      final activeParticipants = exp.participatingMemberNames;
+      if (activeParticipants.isNotEmpty) {
+        double perHeadAmount = exp.amount / activeParticipants.length;
+        for (var person in activeParticipants) {
+          netBalances[person] = (netBalances[person] ?? 0.0) - perHeadAmount;
+        }
+      }
+    }
+
+    List<MapEntry<String, double>> debtors = [];
+    List<MapEntry<String, double>> creditors = [];
+
+    netBalances.forEach((name, bal) {
+      if (bal < -0.01) debtors.add(MapEntry(name, -bal));
+      if (bal > 0.01) creditors.add(MapEntry(name, bal));
+    });
+
+    List<SettlementTransfer> transfers = [];
+    int i = 0, j = 0;
+    while (i < debtors.length && j < creditors.length) {
+      var debtor = debtors[i];
+      var creditor = creditors[j];
+      double amount =
+          debtor.value < creditor.value ? debtor.value : creditor.value;
+
+      transfers.add(SettlementTransfer(
+          from: debtor.key, to: creditor.key, amount: amount));
+
+      debtors[i] = MapEntry(debtor.key, debtor.value - amount);
+      creditors[j] = MapEntry(creditor.key, creditor.value - amount);
+
+      if (debtors[i].value < 0.01) i++;
+      if (creditors[j].value < 0.01) j++;
+    }
+
+    return transfers;
+  }
+
+  List<SettlementTransfer> _calculateBatchSettlements() {
+    Map<String, double> netBalances = {};
+    for (var u in _units) {
+      netBalances[u.name] = 0.0;
+    }
+
+    for (var exp in _expenses) {
+      for (var p in exp.payers) {
+        final payerUnit = _units.firstWhere(
+          (u) => u.id == p.familyId,
+          orElse: () => FamilyUnit(id: '', name: 'Unknown', members: []),
+        );
+        if (payerUnit.name != 'Unknown') {
+          netBalances[payerUnit.name] =
+              (netBalances[payerUnit.name] ?? 0.0) + p.amountPaid;
+        }
+      }
+
+      List<String> activeParticipants = List.from(exp.participatingMemberNames);
+      if (activeParticipants.isEmpty) {
+        for (var u in _units) {
+          if (u.members.isEmpty) {
+            activeParticipants.add(u.name);
+          } else {
+            activeParticipants.addAll(u.members);
+          }
+        }
+      }
+
+      if (activeParticipants.isNotEmpty) {
+        double perHeadAmount = exp.amount / activeParticipants.length;
+        for (var u in _units) {
+          List<String> unitMemberKeys =
+              u.members.isEmpty ? [u.name] : u.members;
+          int participatingCountInUnit = unitMemberKeys
+              .where((m) => activeParticipants.contains(m))
+              .length;
+
+          double unitLiability = perHeadAmount * participatingCountInUnit;
+          netBalances[u.name] = (netBalances[u.name] ?? 0.0) - unitLiability;
+        }
+      }
+    }
+
+    List<MapEntry<String, double>> debtors = [];
+    List<MapEntry<String, double>> creditors = [];
+
+    netBalances.forEach((name, bal) {
+      if (bal < -0.01) debtors.add(MapEntry(name, -bal));
+      if (bal > 0.01) creditors.add(MapEntry(name, bal));
+    });
+
+    List<SettlementTransfer> transfers = [];
+    int i = 0, j = 0;
+    while (i < debtors.length && j < creditors.length) {
+      var debtor = debtors[i];
+      var creditor = creditors[j];
+      double amount =
+          debtor.value < creditor.value ? debtor.value : creditor.value;
+
+      transfers.add(SettlementTransfer(
+          from: debtor.key, to: creditor.key, amount: amount));
+
+      debtors[i] = MapEntry(debtor.key, debtor.value - amount);
+      creditors[j] = MapEntry(creditor.key, creditor.value - amount);
+
+      if (debtors[i].value < 0.01) i++;
+      if (creditors[j].value < 0.01) j++;
+    }
+
+    return transfers;
+  }
+
   Future<void> _generateAiSummary(List<SettlementTransfer> settlements) async {
+    final (effectiveUnits, effectiveExpenses, totalPool) = _getEffectiveData();
+
     setState(() => _isGeneratingAi = true);
     HapticFeedback.lightImpact();
 
     try {
       final summary = await AIService.summarizeBudget(
-        units: _units,
-        expenses: _expenses,
+        units: effectiveUnits,
+        expenses: effectiveExpenses,
         settlements: settlements,
         currencySymbol: widget.selectedCurrency.symbol,
       );
@@ -107,9 +389,9 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
       final session = SavedSplitSession(
         id: _currentSessionId!,
         dateString: DateTime.now().toString().substring(0, 16),
-        totalPool: _totalPool,
-        units: List.from(_units),
-        expenses: List.from(_expenses),
+        totalPool: totalPool,
+        units: List.from(effectiveUnits),
+        expenses: List.from(effectiveExpenses),
         settlements: settlements,
         aiSummary: _latestAiSummary,
       );
@@ -130,6 +412,32 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
     } finally {
       setState(() => _isGeneratingAi = false);
     }
+  }
+
+  Future<void> _completeAndSaveSession(
+      List<SettlementTransfer> settlements) async {
+    final (effectiveUnits, effectiveExpenses, totalPool) = _getEffectiveData();
+    if (effectiveUnits.isEmpty || settlements.isEmpty) return;
+
+    _currentSessionId ??= DateTime.now().millisecondsSinceEpoch.toString();
+
+    final session = SavedSplitSession(
+      id: _currentSessionId!,
+      dateString: DateTime.now().toString().substring(0, 16),
+      totalPool: totalPool,
+      units: List.from(effectiveUnits),
+      expenses: List.from(effectiveExpenses),
+      settlements: settlements,
+      aiSummary: _latestAiSummary,
+    );
+    await ExpenseStorageService.saveSession(session);
+
+    setState(() {
+      _isDataSaved = true;
+    });
+
+    _showTopSnackBar("Split session successfully saved/updated on phone!",
+        isError: false);
   }
 
   void _saveUnit({String? editId}) {
@@ -251,105 +559,7 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
     return total;
   }
 
-  List<SettlementTransfer> _calculateSettlements() {
-    Map<String, double> netBalances = {};
-    for (var u in _units) {
-      netBalances[u.name] = 0.0;
-    }
-
-    for (var exp in _expenses) {
-      for (var p in exp.payers) {
-        final payerUnit = _units.firstWhere(
-          (u) => u.id == p.familyId,
-          orElse: () => FamilyUnit(id: '', name: 'Unknown', members: []),
-        );
-        if (payerUnit.name != 'Unknown') {
-          netBalances[payerUnit.name] =
-              (netBalances[payerUnit.name] ?? 0.0) + p.amountPaid;
-        }
-      }
-
-      List<String> activeParticipants = exp.participatingMemberNames;
-      if (activeParticipants.isEmpty) {
-        for (var u in _units) {
-          if (u.members.isEmpty) {
-            activeParticipants.add(u.name);
-          } else {
-            activeParticipants.addAll(u.members);
-          }
-        }
-      }
-
-      if (activeParticipants.isNotEmpty) {
-        double perHeadAmount = exp.amount / activeParticipants.length;
-        for (var u in _units) {
-          List<String> unitMemberKeys =
-              u.members.isEmpty ? [u.name] : u.members;
-          int participatingCountInUnit = unitMemberKeys
-              .where((m) => activeParticipants.contains(m))
-              .length;
-
-          double unitLiability = perHeadAmount * participatingCountInUnit;
-          netBalances[u.name] = (netBalances[u.name] ?? 0.0) - unitLiability;
-        }
-      }
-    }
-
-    List<MapEntry<String, double>> debtors = [];
-    List<MapEntry<String, double>> creditors = [];
-
-    netBalances.forEach((name, bal) {
-      if (bal < -0.01) debtors.add(MapEntry(name, -bal));
-      if (bal > 0.01) creditors.add(MapEntry(name, bal));
-    });
-
-    List<SettlementTransfer> transfers = [];
-    int i = 0, j = 0;
-    while (i < debtors.length && j < creditors.length) {
-      var debtor = debtors[i];
-      var creditor = creditors[j];
-      double amount =
-          debtor.value < creditor.value ? debtor.value : creditor.value;
-
-      transfers.add(SettlementTransfer(
-          from: debtor.key, to: creditor.key, amount: amount));
-
-      debtors[i] = MapEntry(debtor.key, debtor.value - amount);
-      creditors[j] = MapEntry(creditor.key, creditor.value - amount);
-
-      if (debtors[i].value < 0.01) i++;
-      if (creditors[j].value < 0.01) j++;
-    }
-
-    return transfers;
-  }
-
   double get _totalPool => _expenses.fold(0.0, (sum, e) => sum + e.amount);
-
-  Future<void> _completeAndSaveSession(
-      List<SettlementTransfer> settlements) async {
-    if (_units.isEmpty || settlements.isEmpty) return;
-
-    _currentSessionId ??= DateTime.now().millisecondsSinceEpoch.toString();
-
-    final session = SavedSplitSession(
-      id: _currentSessionId!,
-      dateString: DateTime.now().toString().substring(0, 16),
-      totalPool: _totalPool,
-      units: List.from(_units),
-      expenses: List.from(_expenses),
-      settlements: settlements,
-      aiSummary: _latestAiSummary,
-    );
-    await ExpenseStorageService.saveSession(session);
-
-    setState(() {
-      _isDataSaved = true;
-    });
-
-    _showTopSnackBar("Split session successfully saved/updated on phone!",
-        isError: false);
-  }
 
   void _confirmClearAll() {
     HapticFeedback.mediumImpact();
@@ -362,7 +572,7 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
             style: TextStyle(
                 color: AppColors.labelPrimary, fontWeight: FontWeight.w700)),
         content: const Text(
-          "This permanently deletes all units, expenses, and settlements in this session. This can't be undone.",
+          "This permanently deletes all items in this session. This can't be undone.",
           style: TextStyle(color: AppColors.labelSecondary, height: 1.4),
         ),
         actions: [
@@ -374,6 +584,12 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
           TextButton(
             onPressed: () {
               setState(() {
+                _singleTitleController.clear();
+                _singleAmountController.clear();
+                _singlePayerController.clear();
+                _singleParticipantsController.clear();
+                _individualPeople.clear();
+                _individualExpenses.clear();
                 _units.clear();
                 _expenses.clear();
                 _latestAiSummary = null;
@@ -394,10 +610,7 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final settlements = _calculateSettlements();
     final topPadding = MediaQuery.of(context).padding.top;
-    final bool isAiDisabled =
-        _isGeneratingAi || (_isDataSaved && _latestAiSummary != null);
 
     return CustomScrollView(
       slivers: [
@@ -414,393 +627,1415 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _SummaryHeroCard(
-                  totalPool: _totalPool,
-                  unitCount: _units.length,
-                  transferCount: settlements.length,
-                  currencySymbol: widget.selectedCurrency.symbol,
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 200),
-                        opacity: _isGeneratingAi ? 0.4 : 1.0,
-                        child: ReusableButton(
-                          label: "Add Unit",
-                          icon: CupertinoIcons.person_add_solid,
-                          onPressed: _isGeneratingAi
-                              ? null
-                              : () {
-                                  _showAddOrEditUnitSheet(context);
-                                },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 200),
-                        opacity: _isGeneratingAi ? 0.4 : 1.0,
-                        child: ReusableButton(
-                          label: "Add Expense",
-                          icon: CupertinoIcons.doc_text_fill,
-                          color: AppColors.tertiaryBg,
-                          foreground: Colors.white,
-                          onPressed: _isGeneratingAi
-                              ? null
-                              : () {
-                                  if (_units.isEmpty) {
-                                    _showTopSnackBar(
-                                        "Please add at least one unit before logging expenses.");
-                                    return;
-                                  }
-                                  _showAddOrEditExpenseSheet(context);
-                                },
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 28),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("UNITS",
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.6,
-                            color: AppColors.labelSecondary)),
-                    if (_units.isNotEmpty)
-                      ReusableBadge(text: "${_units.length}"),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _units.isEmpty
-                    ? const EmptyState(
-                        icon: CupertinoIcons.house_fill,
-                        title: "No units yet",
-                        subtitle:
-                            "Tap “Add Unit” to bring everyone into the split.")
-                    : ReusableGlassCard(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 4),
-                        child: Column(
-                          children: _units.map((u) {
-                            final totalPaid = _getUnitTotalPaid(u.id);
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              child: Row(
-                                children: [
-                                  InitialsAvatar(name: u.name),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(u.name,
-                                            style: const TextStyle(
-                                                fontSize: 15.5,
-                                                fontWeight: FontWeight.w600,
-                                                color: AppColors.labelPrimary)),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                            "Paid: ${widget.selectedCurrency.symbol}${totalPaid.toStringAsFixed(2)} • ${u.members.isEmpty ? 'No members' : u.members.join(', ')}",
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                                fontSize: 12.5,
-                                                color:
-                                                    AppColors.labelTertiary)),
-                                      ],
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(CupertinoIcons.pencil,
-                                        size: 16,
-                                        color: AppColors.labelSecondary),
-                                    onPressed: _isGeneratingAi
-                                        ? null
-                                        : () => _showAddOrEditUnitSheet(context,
-                                            unitToEdit: u),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(CupertinoIcons.trash,
-                                        size: 16, color: AppColors.redAccent),
-                                    onPressed: _isGeneratingAi
-                                        ? null
-                                        : () {
-                                            setState(() {
-                                              _units.removeWhere(
-                                                  (item) => item.id == u.id);
-                                              for (var e in _expenses) {
-                                                e.payers.removeWhere(
-                                                    (p) => p.familyId == u.id);
-                                              }
-                                              _expenses.removeWhere(
-                                                  (e) => e.payers.isEmpty);
-                                            });
-                                            _markDataChanged();
-                                          },
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                const SizedBox(height: 28),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("EXPENSES LIST",
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.6,
-                            color: AppColors.labelSecondary)),
-                    if (_expenses.isNotEmpty)
-                      ReusableBadge(text: "${_expenses.length}"),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _expenses.isEmpty
-                    ? const EmptyState(
-                        icon: CupertinoIcons.doc_text,
-                        title: "No expenses logged",
-                        subtitle: "Tap “Add Expense” to track expenses.")
-                    : ReusableGlassCard(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 4),
-                        child: Column(
-                          children: _expenses.map((e) {
-                            String payerSummary = e.payers.map((p) {
-                              final uMatch = _units.firstWhere(
-                                (u) => u.id == p.familyId,
-                                orElse: () => FamilyUnit(
-                                    id: '', name: 'Unknown', members: []),
-                              );
-                              return "${uMatch.name}: ${widget.selectedCurrency.symbol}${p.amountPaid.toStringAsFixed(0)}";
-                            }).join(', ');
-
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(e.title,
-                                            style: const TextStyle(
-                                                fontSize: 15.5,
-                                                fontWeight: FontWeight.w600,
-                                                color: AppColors.labelPrimary)),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                            "Paid by [$payerSummary] • ${widget.selectedCurrency.symbol}${e.amount.toStringAsFixed(2)}",
-                                            style: const TextStyle(
-                                                fontSize: 12.5,
-                                                color:
-                                                    AppColors.labelTertiary)),
-                                      ],
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(CupertinoIcons.pencil,
-                                        size: 16,
-                                        color: AppColors.labelSecondary),
-                                    onPressed: _isGeneratingAi
-                                        ? null
-                                        : () => _showAddOrEditExpenseSheet(
-                                            context,
-                                            expenseToEdit: e),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(CupertinoIcons.trash,
-                                        size: 16, color: AppColors.redAccent),
-                                    onPressed: _isGeneratingAi
-                                        ? null
-                                        : () {
-                                            setState(() {
-                                              _expenses.removeWhere(
-                                                  (item) => item.id == e.id);
-                                            });
-                                            _markDataChanged();
-                                          },
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                const SizedBox(height: 28),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("SETTLEMENTS",
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.6,
-                            color: AppColors.labelSecondary)),
-                    if (settlements.isNotEmpty)
-                      ReusableBadge(text: "${settlements.length}"),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                settlements.isEmpty
-                    ? const EmptyState(
-                        icon: CupertinoIcons.arrow_right_arrow_left_circle_fill,
-                        title: "Nothing to settle yet",
-                        subtitle:
-                            "Add an expense and we'll work out who owes who.")
-                    : ReusableGlassCard(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 4),
-                        child: Column(
-                          children: settlements.map((s) {
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                        color:
-                                            AppColors.green.withOpacity(0.16),
-                                        shape: BoxShape.circle),
-                                    child: const Icon(
-                                        CupertinoIcons.arrow_up_right,
-                                        color: AppColors.green,
-                                        size: 18),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: RichText(
-                                      text: TextSpan(
-                                        style: const TextStyle(fontSize: 15),
-                                        children: [
-                                          TextSpan(
-                                              text: s.from,
-                                              style: const TextStyle(
-                                                  color: AppColors.labelPrimary,
-                                                  fontWeight: FontWeight.w600)),
-                                          const TextSpan(
-                                              text: "  owes  ",
-                                              style: TextStyle(
-                                                  color:
-                                                      AppColors.labelTertiary)),
-                                          TextSpan(
-                                              text: s.to,
-                                              style: const TextStyle(
-                                                  color: AppColors.labelPrimary,
-                                                  fontWeight: FontWeight.w600)),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                      "${widget.selectedCurrency.symbol}${s.amount.toStringAsFixed(2)}",
-                                      style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.green,
-                                          letterSpacing: -0.2)),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                if (settlements.isNotEmpty) ...[
-                  const SizedBox(height: 28),
-                  Column(
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: AppColors.secondaryBg,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
                     children: [
-                      AnimatedOpacity(
-                        duration: const Duration(milliseconds: 200),
-                        opacity: isAiDisabled ? 0.4 : 1.0,
-                        child: ReusableButton(
-                          label: _isGeneratingAi
-                              ? "Summarizing..."
-                              : (_isDataSaved && _latestAiSummary != null
-                                  ? "AI Summary Up to Date"
-                                  : "Summarize with Gemini AI"),
-                          icon: CupertinoIcons.sparkles,
-                          iconOnly: false,
-                          color: AppColors.secondaryBg,
-                          foreground: AppColors.green,
-                          onPressed: isAiDisabled
-                              ? null
-                              : () {
-                                  _generateAiSummary(settlements);
-                                },
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      AnimatedOpacity(
-                        duration: const Duration(milliseconds: 200),
-                        opacity: (_isGeneratingAi || _isDataSaved) ? 0.4 : 1.0,
-                        child: SaveSection(
-                          isDataSaved: _isDataSaved,
-                          isGeneratingAi: _isGeneratingAi,
-                          onSave: (_isGeneratingAi || _isDataSaved)
-                              ? null
-                              : () {
-                                  _completeAndSaveSession(settlements);
-                                },
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      AnimatedOpacity(
-                        duration: const Duration(milliseconds: 200),
-                        opacity: _isGeneratingAi ? 0.4 : 1.0,
-                        child: ReusableButton(
-                          label: "Export Settlement Report",
-                          icon: CupertinoIcons.square_arrow_up_fill,
-                          iconOnly: false,
-                          color: AppColors.tertiaryBg,
-                          foreground: AppColors.labelPrimary,
-                          onPressed: _isGeneratingAi
-                              ? null
-                              : () {
-                                  _showExportBottomSheet(context, settlements);
-                                },
-                        ),
-                      ),
+                      _buildModeTab("Single Bill", CupertinoIcons.bolt_fill,
+                          ExpenseMode.single),
+                      _buildModeTab(
+                          "Individual Multi",
+                          CupertinoIcons.person_2_fill,
+                          ExpenseMode.individualMulti),
+                      _buildModeTab("Multi Group", CupertinoIcons.layers_fill,
+                          ExpenseMode.batch),
                     ],
                   ),
-                ],
-                if (_units.isNotEmpty || _expenses.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  AnimatedOpacity(
-                    duration: const Duration(milliseconds: 200),
-                    opacity: _isGeneratingAi ? 0.4 : 1.0,
-                    child: ReusableButton(
-                      label: "Remove Everything",
-                      icon: CupertinoIcons.trash,
-                      iconOnly: false,
-                      color: AppColors.redAccent,
-                      foreground: Colors.white,
-                      onPressed: _isGeneratingAi
-                          ? null
-                          : () {
-                              _confirmClearAll();
-                            },
-                    ),
-                  ),
-                ],
+                ),
+                const SizedBox(height: 20),
+                if (_activeMode == ExpenseMode.single)
+                  _buildSingleExpenseView()
+                else if (_activeMode == ExpenseMode.individualMulti)
+                  _buildIndividualMultiExpenseView()
+                else
+                  _buildBatchExpenseView(),
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildModeTab(String label, IconData icon, ExpenseMode mode) {
+    final bool isActive = _activeMode == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(() {
+            _activeMode = mode;
+            _latestAiSummary = null;
+            _isDataSaved = false;
+            _currentSessionId = null;
+          });
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive ? AppColors.tertiaryBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon,
+                  size: 14,
+                  color: isActive ? AppColors.green : AppColors.labelSecondary),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: isActive
+                        ? AppColors.labelPrimary
+                        : AppColors.labelSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- SINGLE EXPENSE MODE VIEW ---
+  Widget _buildSingleExpenseView() {
+    final singleSettlements = _calculateSingleSettlements();
+    final totalAmount = double.tryParse(_singleAmountController.text) ?? 0.0;
+    final rawParticipants = _singleParticipantsController.text
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    final perPersonShare =
+        rawParticipants.isNotEmpty ? totalAmount / rawParticipants.length : 0.0;
+
+    final bool hasSingleData = _singleTitleController.text.isNotEmpty ||
+        _singleAmountController.text.isNotEmpty ||
+        _singlePayerController.text.isNotEmpty ||
+        _singleParticipantsController.text.isNotEmpty;
+
+    final bool isAiDisabled =
+        _isGeneratingAi || (_isDataSaved && _latestAiSummary != null);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SummaryHeroCard(
+          totalPool: totalAmount,
+          unitCount: rawParticipants.length,
+          transferCount: singleSettlements.length,
+          currencySymbol: widget.selectedCurrency.symbol,
+        ),
+        const SizedBox(height: 20),
+        ReusableGlassCard(
+          padding: const EdgeInsets.all(18),
+          child: Form(
+            key: _singleFormKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "QUICK SINGLE SPLIT",
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.6,
+                        color: AppColors.labelSecondary,
+                      ),
+                    ),
+                    if (hasSingleData)
+                      GestureDetector(
+                        onTap: _clearSingleEntries,
+                        child: const Text(
+                          "Clear",
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.redAccent,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _singleTitleController,
+                  style: const TextStyle(color: AppColors.labelPrimary),
+                  onChanged: (_) => _markDataChanged(),
+                  decoration: InputDecoration(
+                    labelText: "Expense Title (e.g., Dinner, Uber)",
+                    labelStyle: const TextStyle(
+                        color: AppColors.labelTertiary, fontSize: 14),
+                    filled: true,
+                    fillColor: AppColors.labelPrimary.withOpacity(0.04),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _singleAmountController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: AppColors.labelPrimary),
+                  onChanged: (_) => _markDataChanged(),
+                  decoration: InputDecoration(
+                    labelText:
+                        "Total Amount (${widget.selectedCurrency.symbol})",
+                    labelStyle: const TextStyle(
+                        color: AppColors.labelTertiary, fontSize: 14),
+                    filled: true,
+                    fillColor: AppColors.labelPrimary.withOpacity(0.04),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _singlePayerController,
+                  style: const TextStyle(color: AppColors.labelPrimary),
+                  onChanged: (_) => _markDataChanged(),
+                  decoration: InputDecoration(
+                    labelText: "Who Paid?",
+                    hintText: "e.g., Alex",
+                    hintStyle: const TextStyle(
+                        color: AppColors.labelTertiary, fontSize: 13),
+                    labelStyle: const TextStyle(
+                        color: AppColors.labelTertiary, fontSize: 14),
+                    filled: true,
+                    fillColor: AppColors.labelPrimary.withOpacity(0.04),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _singleParticipantsController,
+                  style: const TextStyle(color: AppColors.labelPrimary),
+                  onChanged: (_) => _markDataChanged(),
+                  decoration: InputDecoration(
+                    labelText: "Split Among (comma separated)",
+                    hintText: "e.g., Alex, Sam, Jordan",
+                    hintStyle: const TextStyle(
+                        color: AppColors.labelTertiary, fontSize: 13),
+                    labelStyle: const TextStyle(
+                        color: AppColors.labelTertiary, fontSize: 14),
+                    filled: true,
+                    fillColor: AppColors.labelPrimary.withOpacity(0.04),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (perPersonShare > 0) ...[
+          const SizedBox(height: 20),
+          ReusableGlassCard(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Per Person Share",
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.labelPrimary,
+                  ),
+                ),
+                Text(
+                  "${widget.selectedCurrency.symbol}${perPersonShare.toStringAsFixed(2)}",
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.green,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 28),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              "SETTLEMENTS",
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.6,
+                color: AppColors.labelSecondary,
+              ),
+            ),
+            if (singleSettlements.isNotEmpty)
+              ReusableBadge(text: "${singleSettlements.length}"),
+          ],
+        ),
+        const SizedBox(height: 10),
+        singleSettlements.isEmpty
+            ? const EmptyState(
+                icon: CupertinoIcons.arrow_right_arrow_left_circle_fill,
+                title: "No single split calculated",
+                subtitle: "Fill in the bill details above to view settlements.",
+              )
+            : ReusableGlassCard(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Column(
+                  children: singleSettlements.map((s) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                                color: AppColors.green.withOpacity(0.16),
+                                shape: BoxShape.circle),
+                            child: const Icon(CupertinoIcons.arrow_up_right,
+                                color: AppColors.green, size: 18),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: const TextStyle(fontSize: 15),
+                                children: [
+                                  TextSpan(
+                                      text: s.from,
+                                      style: const TextStyle(
+                                          color: AppColors.labelPrimary,
+                                          fontWeight: FontWeight.w600)),
+                                  const TextSpan(
+                                      text: " owes ",
+                                      style: TextStyle(
+                                          color: AppColors.labelTertiary)),
+                                  TextSpan(
+                                      text: s.to,
+                                      style: const TextStyle(
+                                          color: AppColors.labelPrimary,
+                                          fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Text(
+                            "${widget.selectedCurrency.symbol}${s.amount.toStringAsFixed(2)}",
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.green,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+        if (singleSettlements.isNotEmpty) ...[
+          const SizedBox(height: 28),
+          Column(
+            children: [
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: isAiDisabled ? 0.4 : 1.0,
+                child: ReusableButton(
+                  label: _isGeneratingAi
+                      ? "Summarizing..."
+                      : (_isDataSaved && _latestAiSummary != null
+                          ? "AI Summary Up to Date"
+                          : "Summarize with Gemini AI"),
+                  icon: CupertinoIcons.sparkles,
+                  iconOnly: false,
+                  color: AppColors.secondaryBg,
+                  foreground: AppColors.green,
+                  onPressed: isAiDisabled
+                      ? null
+                      : () {
+                          _generateAiSummary(singleSettlements);
+                        },
+                ),
+              ),
+              const SizedBox(height: 12),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: (_isGeneratingAi || _isDataSaved) ? 0.4 : 1.0,
+                child: SaveSection(
+                  isDataSaved: _isDataSaved,
+                  isGeneratingAi: _isGeneratingAi,
+                  onSave: (_isGeneratingAi || _isDataSaved)
+                      ? null
+                      : () {
+                          _completeAndSaveSession(singleSettlements);
+                        },
+                ),
+              ),
+              const SizedBox(height: 12),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: _isGeneratingAi ? 0.4 : 1.0,
+                child: ReusableButton(
+                  label: "Export Settlement Report",
+                  icon: CupertinoIcons.square_arrow_up_fill,
+                  iconOnly: false,
+                  color: AppColors.tertiaryBg,
+                  foreground: AppColors.labelPrimary,
+                  onPressed: _isGeneratingAi
+                      ? null
+                      : () {
+                          _showExportBottomSheet(context, singleSettlements);
+                        },
+                ),
+              ),
+            ],
+          ),
+        ],
+        if (hasSingleData) ...[
+          const SizedBox(height: 12),
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: _isGeneratingAi ? 0.4 : 1.0,
+            child: ReusableButton(
+              label: "Remove Entries",
+              icon: CupertinoIcons.trash,
+              iconOnly: false,
+              color: AppColors.redAccent,
+              foreground: Colors.white,
+              onPressed: _isGeneratingAi ? null : _clearSingleEntries,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // --- INDIVIDUAL MULTI-EXPENSE MODE VIEW ---
+  Widget _buildIndividualMultiExpenseView() {
+    final settlements = _calculateIndividualMultiSettlements();
+    final double totalPool =
+        _individualExpenses.fold(0.0, (sum, e) => sum + e.amount);
+
+    final bool hasData =
+        _individualPeople.isNotEmpty || _individualExpenses.isNotEmpty;
+
+    final bool isAiDisabled =
+        _isGeneratingAi || (_isDataSaved && _latestAiSummary != null);
+
+    final bool canAddExpense = _individualPeople.length >= 2;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SummaryHeroCard(
+          totalPool: totalPool,
+          unitCount: _individualPeople.length,
+          transferCount: settlements.length,
+          currencySymbol: widget.selectedCurrency.symbol,
+        ),
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: _isGeneratingAi ? 0.4 : 1.0,
+                child: ReusableButton(
+                  label: "Add Person",
+                  icon: CupertinoIcons.person_add_solid,
+                  onPressed:
+                      _isGeneratingAi ? null : () => _showAddPersonDialog(),
+                ),
+              ),
+            ),
+            if (canAddExpense) ...[
+              const SizedBox(width: 10),
+              Expanded(
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: _isGeneratingAi ? 0.4 : 1.0,
+                  child: ReusableButton(
+                    label: "Add Expense",
+                    icon: CupertinoIcons.doc_text_fill,
+                    color: AppColors.tertiaryBg,
+                    foreground: Colors.white,
+                    onPressed: _isGeneratingAi
+                        ? null
+                        : () {
+                            _showAddIndividualExpenseSheet();
+                          },
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (!canAddExpense)
+          _buildAddExpenseHint(
+              "Add at least 2 people to start logging expenses."),
+        const SizedBox(height: 28),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("PARTICIPANTS",
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    color: AppColors.labelSecondary)),
+            if (_individualPeople.isNotEmpty)
+              ReusableBadge(text: "${_individualPeople.length}"),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _individualPeople.isEmpty
+            ? const EmptyState(
+                icon: CupertinoIcons.person_3_fill,
+                title: "No participants added",
+                subtitle:
+                    "Add individual people to start logging multiple shared bills.",
+              )
+            : ReusableGlassCard(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Column(
+                  children: _individualPeople.map((person) {
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: InitialsAvatar(name: person),
+                      title: Text(person,
+                          style: const TextStyle(
+                              color: AppColors.labelPrimary,
+                              fontWeight: FontWeight.w600)),
+                      trailing: IconButton(
+                        icon: const Icon(CupertinoIcons.trash,
+                            size: 16, color: AppColors.redAccent),
+                        onPressed: _isGeneratingAi
+                            ? null
+                            : () {
+                                setState(() {
+                                  _individualPeople.remove(person);
+                                  _individualExpenses.removeWhere((e) =>
+                                      e.payers
+                                          .any((p) => p.familyId == person) ||
+                                      e.participatingMemberNames
+                                          .contains(person));
+                                });
+                                _markDataChanged();
+                              },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+        const SizedBox(height: 28),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("EXPENSES LIST",
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    color: AppColors.labelSecondary)),
+            if (_individualExpenses.isNotEmpty)
+              ReusableBadge(text: "${_individualExpenses.length}"),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _individualExpenses.isEmpty
+            ? const EmptyState(
+                icon: CupertinoIcons.doc_text,
+                title: "No expenses logged",
+                subtitle: "Tap “Add Expense” to log bills between individuals.",
+              )
+            : ReusableGlassCard(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Column(
+                  children: _individualExpenses.map((e) {
+                    final payerName = e.payers.first.familyId;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(e.title,
+                          style: const TextStyle(
+                              color: AppColors.labelPrimary,
+                              fontWeight: FontWeight.w600)),
+                      subtitle: Text(
+                        "Paid by $payerName • Split among ${e.participatingMemberNames.join(', ')}",
+                        style: const TextStyle(
+                            color: AppColors.labelTertiary, fontSize: 12.5),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            "${widget.selectedCurrency.symbol}${e.amount.toStringAsFixed(2)}",
+                            style: const TextStyle(
+                                color: AppColors.green,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15),
+                          ),
+                          IconButton(
+                            icon: const Icon(CupertinoIcons.trash,
+                                size: 16, color: AppColors.redAccent),
+                            onPressed: _isGeneratingAi
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _individualExpenses.removeWhere(
+                                          (item) => item.id == e.id);
+                                    });
+                                    _markDataChanged();
+                                  },
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+        const SizedBox(height: 28),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("SETTLEMENTS (WHO PAYS WHOM)",
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    color: AppColors.labelSecondary)),
+            if (settlements.isNotEmpty)
+              ReusableBadge(text: "${settlements.length}"),
+          ],
+        ),
+        const SizedBox(height: 10),
+        settlements.isEmpty
+            ? const EmptyState(
+                icon: CupertinoIcons.arrow_right_arrow_left_circle_fill,
+                title: "No settlements calculated",
+                subtitle:
+                    "Log expenses above to calculate individual balances.",
+              )
+            : ReusableGlassCard(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Column(
+                  children: settlements.map((s) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                                color: AppColors.green.withOpacity(0.16),
+                                shape: BoxShape.circle),
+                            child: const Icon(CupertinoIcons.arrow_up_right,
+                                color: AppColors.green, size: 16),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: const TextStyle(fontSize: 14.5),
+                                children: [
+                                  TextSpan(
+                                      text: s.from,
+                                      style: const TextStyle(
+                                          color: AppColors.labelPrimary,
+                                          fontWeight: FontWeight.w600)),
+                                  const TextSpan(
+                                      text: " owes ",
+                                      style: TextStyle(
+                                          color: AppColors.labelTertiary)),
+                                  TextSpan(
+                                      text: s.to,
+                                      style: const TextStyle(
+                                          color: AppColors.labelPrimary,
+                                          fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Text(
+                            "${widget.selectedCurrency.symbol}${s.amount.toStringAsFixed(2)}",
+                            style: const TextStyle(
+                                fontSize: 15.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.green),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+        if (settlements.isNotEmpty) ...[
+          const SizedBox(height: 28),
+          Column(
+            children: [
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: isAiDisabled ? 0.4 : 1.0,
+                child: ReusableButton(
+                  label: _isGeneratingAi
+                      ? "Summarizing..."
+                      : (_isDataSaved && _latestAiSummary != null
+                          ? "AI Summary Up to Date"
+                          : "Summarize with Gemini AI"),
+                  icon: CupertinoIcons.sparkles,
+                  iconOnly: false,
+                  color: AppColors.secondaryBg,
+                  foreground: AppColors.green,
+                  onPressed: isAiDisabled
+                      ? null
+                      : () {
+                          _generateAiSummary(settlements);
+                        },
+                ),
+              ),
+              const SizedBox(height: 12),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: (_isGeneratingAi || _isDataSaved) ? 0.4 : 1.0,
+                child: SaveSection(
+                  isDataSaved: _isDataSaved,
+                  isGeneratingAi: _isGeneratingAi,
+                  onSave: (_isGeneratingAi || _isDataSaved)
+                      ? null
+                      : () {
+                          _completeAndSaveSession(settlements);
+                        },
+                ),
+              ),
+              const SizedBox(height: 12),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: _isGeneratingAi ? 0.4 : 1.0,
+                child: ReusableButton(
+                  label: "Export Settlement Report",
+                  icon: CupertinoIcons.square_arrow_up_fill,
+                  iconOnly: false,
+                  color: AppColors.tertiaryBg,
+                  foreground: AppColors.labelPrimary,
+                  onPressed: _isGeneratingAi
+                      ? null
+                      : () {
+                          _showExportBottomSheet(context, settlements);
+                        },
+                ),
+              ),
+            ],
+          ),
+        ],
+        if (hasData) ...[
+          const SizedBox(height: 12),
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: _isGeneratingAi ? 0.4 : 1.0,
+            child: ReusableButton(
+              label: "Remove Entries",
+              icon: CupertinoIcons.trash,
+              iconOnly: false,
+              color: AppColors.redAccent,
+              foreground: Colors.white,
+              onPressed: _isGeneratingAi ? null : _clearIndividualMultiEntries,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // --- MULTI-EXPENSE (BATCH) MODE VIEW ---
+  Widget _buildBatchExpenseView() {
+    final settlements = _calculateBatchSettlements();
+    final bool isAiDisabled =
+        _isGeneratingAi || (_isDataSaved && _latestAiSummary != null);
+
+    final bool canAddExpense = _units.length >= 2;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SummaryHeroCard(
+          totalPool: _totalPool,
+          unitCount: _units.length,
+          transferCount: settlements.length,
+          currencySymbol: widget.selectedCurrency.symbol,
+        ),
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: _isGeneratingAi ? 0.4 : 1.0,
+                child: ReusableButton(
+                  label: "Add Unit",
+                  icon: CupertinoIcons.person_add_solid,
+                  onPressed: _isGeneratingAi
+                      ? null
+                      : () {
+                          _showAddOrEditUnitSheet(context);
+                        },
+                ),
+              ),
+            ),
+            if (canAddExpense) ...[
+              const SizedBox(width: 10),
+              Expanded(
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: _isGeneratingAi ? 0.4 : 1.0,
+                  child: ReusableButton(
+                    label: "Add Expense",
+                    icon: CupertinoIcons.doc_text_fill,
+                    color: AppColors.tertiaryBg,
+                    foreground: Colors.white,
+                    onPressed: _isGeneratingAi
+                        ? null
+                        : () {
+                            _showAddOrEditExpenseSheet(context);
+                          },
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (!canAddExpense)
+          _buildAddExpenseHint(
+              "Add at least 2 units to start logging expenses."),
+        const SizedBox(height: 28),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("UNITS",
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    color: AppColors.labelSecondary)),
+            if (_units.isNotEmpty) ReusableBadge(text: "${_units.length}"),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _units.isEmpty
+            ? const EmptyState(
+                icon: CupertinoIcons.house_fill,
+                title: "No units yet",
+                subtitle: "Tap “Add Unit” to bring everyone into the split.")
+            : ReusableGlassCard(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Column(
+                  children: _units.map((u) {
+                    final totalPaid = _getUnitTotalPaid(u.id);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          InitialsAvatar(name: u.name),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(u.name,
+                                    style: const TextStyle(
+                                        fontSize: 15.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.labelPrimary)),
+                                const SizedBox(height: 2),
+                                Text(
+                                    "Paid: ${widget.selectedCurrency.symbol}${totalPaid.toStringAsFixed(2)} • ${u.members.isEmpty ? 'No members' : u.members.join(', ')}",
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 12.5,
+                                        color: AppColors.labelTertiary)),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(CupertinoIcons.pencil,
+                                size: 16, color: AppColors.labelSecondary),
+                            onPressed: _isGeneratingAi
+                                ? null
+                                : () => _showAddOrEditUnitSheet(context,
+                                    unitToEdit: u),
+                          ),
+                          IconButton(
+                            icon: const Icon(CupertinoIcons.trash,
+                                size: 16, color: AppColors.redAccent),
+                            onPressed: _isGeneratingAi
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _units.removeWhere(
+                                          (item) => item.id == u.id);
+                                      for (var e in _expenses) {
+                                        e.payers.removeWhere(
+                                            (p) => p.familyId == u.id);
+                                      }
+                                      _expenses
+                                          .removeWhere((e) => e.payers.isEmpty);
+                                    });
+                                    _markDataChanged();
+                                  },
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+        const SizedBox(height: 28),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("EXPENSES LIST",
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    color: AppColors.labelSecondary)),
+            if (_expenses.isNotEmpty)
+              ReusableBadge(text: "${_expenses.length}"),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _expenses.isEmpty
+            ? const EmptyState(
+                icon: CupertinoIcons.doc_text,
+                title: "No expenses logged",
+                subtitle: "Tap “Add Expense” to track expenses.")
+            : ReusableGlassCard(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Column(
+                  children: _expenses.map((e) {
+                    String payerSummary = e.payers.map((p) {
+                      final uMatch = _units.firstWhere(
+                        (u) => u.id == p.familyId,
+                        orElse: () =>
+                            FamilyUnit(id: '', name: 'Unknown', members: []),
+                      );
+                      return "${uMatch.name}: ${widget.selectedCurrency.symbol}${p.amountPaid.toStringAsFixed(0)}";
+                    }).join(', ');
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(e.title,
+                                    style: const TextStyle(
+                                        fontSize: 15.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.labelPrimary)),
+                                const SizedBox(height: 2),
+                                Text(
+                                    "Paid by [$payerSummary] • ${widget.selectedCurrency.symbol}${e.amount.toStringAsFixed(2)}",
+                                    style: const TextStyle(
+                                        fontSize: 12.5,
+                                        color: AppColors.labelTertiary)),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(CupertinoIcons.pencil,
+                                size: 16, color: AppColors.labelSecondary),
+                            onPressed: _isGeneratingAi
+                                ? null
+                                : () => _showAddOrEditExpenseSheet(context,
+                                    expenseToEdit: e),
+                          ),
+                          IconButton(
+                            icon: const Icon(CupertinoIcons.trash,
+                                size: 16, color: AppColors.redAccent),
+                            onPressed: _isGeneratingAi
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _expenses.removeWhere(
+                                          (item) => item.id == e.id);
+                                    });
+                                    _markDataChanged();
+                                  },
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+        const SizedBox(height: 28),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("SETTLEMENTS",
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    color: AppColors.labelSecondary)),
+            if (settlements.isNotEmpty)
+              ReusableBadge(text: "${settlements.length}"),
+          ],
+        ),
+        const SizedBox(height: 10),
+        settlements.isEmpty
+            ? const EmptyState(
+                icon: CupertinoIcons.arrow_right_arrow_left_circle_fill,
+                title: "Nothing to settle yet",
+                subtitle: "Add an expense and we'll work out who owes who.")
+            : ReusableGlassCard(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Column(
+                  children: settlements.map((s) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                                color: AppColors.green.withOpacity(0.16),
+                                shape: BoxShape.circle),
+                            child: const Icon(CupertinoIcons.arrow_up_right,
+                                color: AppColors.green, size: 18),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: const TextStyle(fontSize: 15),
+                                children: [
+                                  TextSpan(
+                                      text: s.from,
+                                      style: const TextStyle(
+                                          color: AppColors.labelPrimary,
+                                          fontWeight: FontWeight.w600)),
+                                  const TextSpan(
+                                      text: "  owes  ",
+                                      style: TextStyle(
+                                          color: AppColors.labelTertiary)),
+                                  TextSpan(
+                                      text: s.to,
+                                      style: const TextStyle(
+                                          color: AppColors.labelPrimary,
+                                          fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Text(
+                              "${widget.selectedCurrency.symbol}${s.amount.toStringAsFixed(2)}",
+                              style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.green,
+                                  letterSpacing: -0.2)),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+        if (settlements.isNotEmpty) ...[
+          const SizedBox(height: 28),
+          Column(
+            children: [
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: isAiDisabled ? 0.4 : 1.0,
+                child: ReusableButton(
+                  label: _isGeneratingAi
+                      ? "Summarizing..."
+                      : (_isDataSaved && _latestAiSummary != null
+                          ? "AI Summary Up to Date"
+                          : "Summarize with Gemini AI"),
+                  icon: CupertinoIcons.sparkles,
+                  iconOnly: false,
+                  color: AppColors.secondaryBg,
+                  foreground: AppColors.green,
+                  onPressed: isAiDisabled
+                      ? null
+                      : () {
+                          _generateAiSummary(settlements);
+                        },
+                ),
+              ),
+              const SizedBox(height: 12),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: (_isGeneratingAi || _isDataSaved) ? 0.4 : 1.0,
+                child: SaveSection(
+                  isDataSaved: _isDataSaved,
+                  isGeneratingAi: _isGeneratingAi,
+                  onSave: (_isGeneratingAi || _isDataSaved)
+                      ? null
+                      : () {
+                          _completeAndSaveSession(settlements);
+                        },
+                ),
+              ),
+              const SizedBox(height: 12),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: _isGeneratingAi ? 0.4 : 1.0,
+                child: ReusableButton(
+                  label: "Export Settlement Report",
+                  icon: CupertinoIcons.square_arrow_up_fill,
+                  iconOnly: false,
+                  color: AppColors.tertiaryBg,
+                  foreground: AppColors.labelPrimary,
+                  onPressed: _isGeneratingAi
+                      ? null
+                      : () {
+                          _showExportBottomSheet(context, settlements);
+                        },
+                ),
+              ),
+            ],
+          ),
+        ],
+        if (_units.isNotEmpty || _expenses.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: _isGeneratingAi ? 0.4 : 1.0,
+            child: ReusableButton(
+              label: "Remove Everything",
+              icon: CupertinoIcons.trash,
+              iconOnly: false,
+              color: AppColors.redAccent,
+              foreground: Colors.white,
+              onPressed: _isGeneratingAi
+                  ? null
+                  : () {
+                      _confirmClearAll();
+                    },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // --- DIALOGS AND BOTTOM SHEETS ---
+  void _showAddPersonDialog() {
+    _individualPersonController.clear();
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withOpacity(0.10),
+                    AppColors.secondaryBg.withOpacity(0.80),
+                  ],
+                ),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.16),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Add Person",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.labelPrimary,
+                        letterSpacing: -0.3,
+                      )),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _individualPersonController,
+                    autofocus: true,
+                    style: const TextStyle(color: AppColors.labelPrimary),
+                    decoration: InputDecoration(
+                      hintText: "Enter person's name",
+                      hintStyle: const TextStyle(
+                          color: AppColors.labelTertiary, fontSize: 13.5),
+                      filled: true,
+                      fillColor: AppColors.labelPrimary.withOpacity(0.05),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                            color: AppColors.green, width: 1.4),
+                      ),
+                    ),
+                    onSubmitted: (_) {
+                      final name = _individualPersonController.text.trim();
+                      if (name.isNotEmpty &&
+                          !_individualPeople.contains(name)) {
+                        setState(() {
+                          _individualPeople.add(name);
+                        });
+                        _markDataChanged();
+                      }
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text("Cancel",
+                            style: TextStyle(color: AppColors.labelSecondary)),
+                      ),
+                      const SizedBox(width: 6),
+                      TextButton(
+                        onPressed: () {
+                          final name = _individualPersonController.text.trim();
+                          if (name.isNotEmpty &&
+                              !_individualPeople.contains(name)) {
+                            setState(() {
+                              _individualPeople.add(name);
+                            });
+                            _markDataChanged();
+                          }
+                          Navigator.pop(ctx);
+                        },
+                        child: const Text("Add",
+                            style: TextStyle(
+                                color: AppColors.green,
+                                fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAddIndividualExpenseSheet() {
+    _indExpenseTitleController.clear();
+    _indExpenseAmountController.clear();
+    String selectedPayer = _individualPeople.first;
+    Set<String> selectedParticipants = Set.from(_individualPeople);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (ctx, setStateModal) {
+          return ReusableBlurredSheet(
+            child: Padding(
+              padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                  left: 24,
+                  right: 24,
+                  top: 12),
+              child: SingleChildScrollView(
+                child: Form(
+                  key: _indExpenseFormKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _sheetGrabber(),
+                      const Text("Add Shared Expense",
+                          style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.labelPrimary)),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _indExpenseTitleController,
+                        style: const TextStyle(color: AppColors.labelPrimary),
+                        decoration: InputDecoration(
+                          labelText: "Title (e.g. Snacks, Gas)",
+                          labelStyle:
+                              const TextStyle(color: AppColors.labelTertiary),
+                          filled: true,
+                          fillColor: AppColors.labelPrimary.withOpacity(0.04),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none),
+                        ),
+                        validator: (v) =>
+                            v == null || v.isEmpty ? "Required" : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _indExpenseAmountController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: AppColors.labelPrimary),
+                        decoration: InputDecoration(
+                          labelText:
+                              "Amount (${widget.selectedCurrency.symbol})",
+                          labelStyle:
+                              const TextStyle(color: AppColors.labelTertiary),
+                          filled: true,
+                          fillColor: AppColors.labelPrimary.withOpacity(0.04),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none),
+                        ),
+                        validator: (v) => double.tryParse(v ?? '') == null
+                            ? "Enter valid amount"
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text("Who Paid?",
+                          style: TextStyle(
+                              color: AppColors.labelSecondary,
+                              fontWeight: FontWeight.w600)),
+                      DropdownButton<String>(
+                        value: selectedPayer,
+                        dropdownColor: AppColors.secondaryBg,
+                        isExpanded: true,
+                        items: _individualPeople.map((p) {
+                          return DropdownMenuItem(
+                              value: p,
+                              child: Text(p,
+                                  style: const TextStyle(
+                                      color: AppColors.labelPrimary)));
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setStateModal(() => selectedPayer = val);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      const Text("Split among:",
+                          style: TextStyle(
+                              color: AppColors.labelSecondary,
+                              fontWeight: FontWeight.w600)),
+                      ..._individualPeople.map((p) {
+                        return CheckboxListTile(
+                          title: Text(p,
+                              style: const TextStyle(
+                                  color: AppColors.labelPrimary)),
+                          value: selectedParticipants.contains(p),
+                          activeColor: AppColors.green,
+                          checkColor: Colors.black,
+                          dense: true,
+                          onChanged: (val) {
+                            setStateModal(() {
+                              if (val == true) {
+                                selectedParticipants.add(p);
+                              } else {
+                                selectedParticipants.remove(p);
+                              }
+                            });
+                          },
+                        );
+                      }),
+                      const SizedBox(height: 20),
+                      ReusableButton(
+                        label: "Save Expense",
+                        icon: CupertinoIcons.check_mark,
+                        onPressed: () {
+                          if (!(_indExpenseFormKey.currentState?.validate() ??
+                              false)) return;
+                          if (selectedParticipants.isEmpty) {
+                            _showTopSnackBar(
+                                "Select at least 1 person to split.");
+                            return;
+                          }
+                          final amt = double.parse(
+                              _indExpenseAmountController.text.trim());
+                          setState(() {
+                            _individualExpenses.add(ExpenseEntry(
+                              id: DateTime.now()
+                                  .millisecondsSinceEpoch
+                                  .toString(),
+                              title: _indExpenseTitleController.text.trim(),
+                              amount: amt,
+                              payers: [
+                                ExpensePayerContribution(
+                                    familyId: selectedPayer, amountPaid: amt)
+                              ],
+                              participatingFamilyIds:
+                                  selectedParticipants.toList(),
+                              participatingMemberNames:
+                                  selectedParticipants.toList(),
+                            ));
+                          });
+                          _markDataChanged();
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -1203,6 +2438,8 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
 
   void _showExportBottomSheet(
       BuildContext context, List<SettlementTransfer> settlements) {
+    final (effectiveUnits, effectiveExpenses, _) = _getEffectiveData();
+
     HapticFeedback.selectionClick();
     showModalBottomSheet(
       context: context,
@@ -1230,8 +2467,8 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
                   Navigator.pop(context);
                   ExpenseExportService.exportPdf(
                     settlements: settlements,
-                    units: _units,
-                    expenses: _expenses,
+                    units: effectiveUnits,
+                    expenses: effectiveExpenses,
                     currencySymbol: widget.selectedCurrency.symbol,
                   );
                 },
@@ -1242,7 +2479,12 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
                 title: const Text("Export as Document (.txt)"),
                 onTap: () {
                   Navigator.pop(context);
-                  ExpenseExportService.exportDocument(settlements: settlements);
+                  ExpenseExportService.exportDocument(
+                    settlements: settlements,
+                    units: effectiveUnits,
+                    expenses: effectiveExpenses,
+                    currencySymbol: widget.selectedCurrency.symbol,
+                  );
                 },
               ),
             ],
@@ -1303,7 +2545,7 @@ class _SummaryHeroCard extends StatelessWidget {
             const SizedBox(height: 16),
             Row(
               children: [
-                _heroStat(CupertinoIcons.house_fill, "$unitCount", "Units"),
+                _heroStat(CupertinoIcons.person_3_fill, "$unitCount", "People"),
                 const SizedBox(width: 24),
                 _heroStat(CupertinoIcons.arrow_right_arrow_left,
                     "$transferCount", "To Settle"),

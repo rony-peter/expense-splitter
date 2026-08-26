@@ -1,6 +1,7 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/expense_models.dart';
 
 class ExpenseExportService {
@@ -105,5 +106,65 @@ class ExpenseExportService {
 
   static Future<void> exportDocument({
     required List<SettlementTransfer> settlements,
-  }) async {}
+    List<FamilyUnit> units = const [],
+    List<ExpenseEntry> expenses = const [],
+    String currencySymbol = '',
+  }) async {
+    final buffer = StringBuffer();
+    buffer.writeln('EXPENSE SPLITTER REPORT');
+    buffer.writeln(
+        'Generated: ${DateTime.now().toString().substring(0, 16)}');
+    buffer.writeln('=' * 40);
+    buffer.writeln();
+
+    if (units.isNotEmpty) {
+      buffer.writeln('REGISTERED UNITS & MEMBERS');
+      buffer.writeln('-' * 40);
+      for (final unit in units) {
+        final memberString = unit.members.isEmpty
+            ? 'No individual members'
+            : unit.members.join(', ');
+        buffer.writeln('- ${unit.name}: $memberString');
+      }
+      buffer.writeln();
+    }
+
+    if (expenses.isNotEmpty) {
+      buffer.writeln('EXPENSES BREAKDOWN');
+      buffer.writeln('-' * 40);
+      for (final expense in expenses) {
+        final payersText = expense.payers.map((p) {
+          final matchedUnit = units.firstWhere(
+            (u) => u.id == p.familyId,
+            orElse: () => FamilyUnit(id: '', name: 'Unknown', members: []),
+          );
+          return '${matchedUnit.name} ($currencySymbol${p.amountPaid.toStringAsFixed(2)})';
+        }).join(', ');
+
+        buffer.writeln(expense.title);
+        buffer.writeln(
+            '  Total Amount: $currencySymbol${expense.amount.toStringAsFixed(2)}');
+        buffer.writeln('  Paid by: $payersText');
+        buffer.writeln(
+            '  Split among: ${expense.participatingMemberNames.join(', ')}');
+        buffer.writeln();
+      }
+    }
+
+    buffer.writeln('FINAL SETTLEMENTS');
+    buffer.writeln('-' * 40);
+    if (settlements.isEmpty) {
+      buffer.writeln('No settlements to display.');
+    } else {
+      for (final s in settlements) {
+        buffer.writeln(
+            '${s.from} owes ${s.to}: $currencySymbol${s.amount.toStringAsFixed(2)}');
+      }
+    }
+
+    await Share.share(
+      buffer.toString(),
+      subject: 'Expense Splitter Report',
+    );
+  }
 }
