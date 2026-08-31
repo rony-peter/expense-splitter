@@ -15,9 +15,8 @@ Future<void> main() async {
     debugPrint("Could not load .env file: $e");
   }
 
-  GoogleFonts.config.allowRuntimeFetching = false;
-
   if (!kIsWeb) {
+    GoogleFonts.config.allowRuntimeFetching = false;
     await MobileAds.instance.initialize();
   }
 
