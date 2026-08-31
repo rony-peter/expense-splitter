@@ -11,7 +11,15 @@ class ExpenseExportService {
     required List<ExpenseEntry> expenses,
     required String currencySymbol,
   }) async {
-    final pdfDoc = pw.Document();
+    final baseFont = await PdfGoogleFonts.notoSansRegular();
+    final boldFont = await PdfGoogleFonts.notoSansBold();
+
+    final pdfDoc = pw.Document(
+      theme: pw.ThemeData.withFont(
+        base: baseFont,
+        bold: boldFont,
+      ),
+    );
 
     pdfDoc.addPage(
       pw.MultiPage(
@@ -112,8 +120,7 @@ class ExpenseExportService {
   }) async {
     final buffer = StringBuffer();
     buffer.writeln('EXPENSE SPLITTER REPORT');
-    buffer.writeln(
-        'Generated: ${DateTime.now().toString().substring(0, 16)}');
+    buffer.writeln('Generated: ${DateTime.now().toString().substring(0, 16)}');
     buffer.writeln('=' * 40);
     buffer.writeln();
 

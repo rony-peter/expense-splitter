@@ -636,15 +636,29 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
                   ),
                   child: Row(
                     children: [
-                      _buildModeTab("Single Bill", CupertinoIcons.bolt_fill,
+                      _buildModeTab("Quick Split", CupertinoIcons.bolt_fill,
                           ExpenseMode.single),
-                      _buildModeTab(
-                          "Individual Multi",
-                          CupertinoIcons.person_2_fill,
+                      _buildModeTab("Friends", CupertinoIcons.person_2_fill,
                           ExpenseMode.individualMulti),
-                      _buildModeTab("Multi Group", CupertinoIcons.layers_fill,
+                      _buildModeTab("Groups", CupertinoIcons.layers_fill,
                           ExpenseMode.batch),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    _activeMode == ExpenseMode.single
+                        ? "Quick Split: for a single one-off bill, split evenly among everyone."
+                        : _activeMode == ExpenseMode.individualMulti
+                            ? "Friends: keep a running tab of multiple expenses between people over time."
+                            : "Groups: split expenses across families or larger groups, unit by unit.",
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: AppColors.labelTertiary,
+                      height: 1.3,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -812,27 +826,6 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
-                  controller: _singlePayerController,
-                  style: const TextStyle(color: AppColors.labelPrimary),
-                  onChanged: (_) => _markDataChanged(),
-                  decoration: InputDecoration(
-                    labelText: "Who Paid?",
-                    hintText: "e.g., Alex",
-                    hintStyle: const TextStyle(
-                        color: AppColors.labelTertiary, fontSize: 13),
-                    labelStyle: const TextStyle(
-                        color: AppColors.labelTertiary, fontSize: 14),
-                    filled: true,
-                    fillColor: AppColors.labelPrimary.withOpacity(0.04),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
                   controller: _singleParticipantsController,
                   style: const TextStyle(color: AppColors.labelPrimary),
                   onChanged: (_) => _markDataChanged(),
@@ -852,6 +845,58 @@ class _ExpenseHomePageState extends State<ExpenseHomePage> {
                         borderSide: BorderSide.none),
                   ),
                 ),
+                const SizedBox(height: 14),
+                const Text(
+                  "Who Paid?",
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.labelSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (rawParticipants.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      "Enter names above in 'Split Among' to choose who paid.",
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: AppColors.labelTertiary,
+                        height: 1.3,
+                      ),
+                    ),
+                  )
+                else
+                  Column(
+                    children: rawParticipants.map((name) {
+                      final isSelected =
+                          _singlePayerController.text.trim().toLowerCase() ==
+                              name.toLowerCase();
+                      return CheckboxListTile(
+                        value: isSelected,
+                        onChanged: (checked) {
+                          setState(() {
+                            _singlePayerController.text =
+                                (checked ?? false) ? name : '';
+                          });
+                          _markDataChanged();
+                        },
+                        controlAffinity: ListTileControlAffinity.leading,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        activeColor: AppColors.green,
+                        checkColor: Colors.black,
+                        title: Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppColors.labelPrimary,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
               ],
             ),
           ),
