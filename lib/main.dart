@@ -16,7 +16,7 @@ Future<void> main() async {
   }
 
   if (!kIsWeb) {
-    GoogleFonts.config.allowRuntimeFetching = false;
+    // Mobile Ads initialization
     await MobileAds.instance.initialize();
   }
 
