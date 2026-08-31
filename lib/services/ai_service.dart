@@ -1,12 +1,17 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../models/expense_models.dart';
 
 class AIService {
-  static String get _apiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
+  // Checks Vercel's --dart-define first, then falls back to dotenv for APK
+  static String get _apiKey {
+    const defineKey = String.fromEnvironment('GEMINI_API_KEY');
+    if (defineKey.isNotEmpty) return defineKey;
+    return dotenv.env['GEMINI_API_KEY'] ?? '';
+  }
 
   static Future<bool> hasInternetConnection() async {
     try {
@@ -28,13 +33,12 @@ class AIService {
   }) async {
     final connected = await hasInternetConnection();
     if (!connected) {
-      throw const SocketException(
-          'No internet connection. Please switch on your network.');
+      throw Exception('No internet connection. Please switch on your network.');
     }
 
     if (_apiKey.isEmpty) {
-      throw const HttpException(
-          'No Gemini API key configured. Add GEMINI_API_KEY to your .env file.');
+      throw Exception(
+          'No Gemini API key configured. Please set GEMINI_API_KEY.');
     }
 
     final prompt = '''
@@ -82,7 +86,7 @@ class AIService {
           message = apiMessage;
         }
       } catch (_) {}
-      throw HttpException(message);
+      throw Exception(message);
     }
   }
 }
