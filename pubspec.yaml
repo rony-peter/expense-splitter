@@ -71,7 +71,7 @@ flutter:
 
   # Asset section configured for your custom app icon
   assets:
-    - .env.local
+    # - .env.local
     - assets/icon/app_icon.png
   #   - images/a_dot_ham.jpeg
 
